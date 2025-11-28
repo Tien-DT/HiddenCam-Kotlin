@@ -18,6 +18,7 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
@@ -224,25 +225,43 @@ class VideoRecordingService : LifecycleService() {
         try {
             cameraProvider?.unbindAll()
             
-            val quality = when (settings.resolution) {
+            val cameraSelector = when (settings.cameraFacing) {
+                CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
+                CameraFacing.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            
+            // Get supported qualities for the selected camera
+            val cameraInfo = cameraProvider!!.bindToLifecycle(this, cameraSelector).cameraInfo
+            val supportedQualities = QualitySelector.getSupportedQualities(cameraInfo)
+            cameraProvider?.unbindAll()
+            
+            Log.d(TAG, "Supported qualities: $supportedQualities")
+            
+            val preferredQuality = when (settings.resolution) {
                 VideoResolution.SD_480P -> Quality.SD
                 VideoResolution.HD_720P -> Quality.HD
                 VideoResolution.FHD_1080P -> Quality.FHD
                 VideoResolution.UHD_4K -> Quality.UHD
             }
             
-            val qualitySelector = QualitySelector.from(quality)
+            // Use fallback strategy: preferred quality -> lower quality -> highest available
+            val qualitySelector = if (supportedQualities.contains(preferredQuality)) {
+                QualitySelector.from(preferredQuality)
+            } else {
+                // Fallback to best available quality
+                QualitySelector.fromOrderedList(
+                    listOf(Quality.FHD, Quality.HD, Quality.SD, Quality.UHD),
+                    FallbackStrategy.higherQualityOrLowerThan(Quality.SD)
+                )
+            }
+            
+            Log.d(TAG, "Using quality selector with preferred: $preferredQuality")
             
             val recorder = Recorder.Builder()
                 .setQualitySelector(qualitySelector)
                 .build()
             
             videoCapture = VideoCapture.withOutput(recorder)
-            
-            val cameraSelector = when (settings.cameraFacing) {
-                CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
-                CameraFacing.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
-            }
             
             cameraProvider?.bindToLifecycle(
                 this,
