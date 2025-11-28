@@ -1,0 +1,399 @@
+package com.example.hiddencam.data.service
+
+import android.Manifest
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.media.MediaRecorder
+import android.os.Binder
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import android.provider.MediaStore
+import android.util.Log
+import androidx.camera.core.CameraSelector
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleService
+import androidx.lifecycle.lifecycleScope
+import com.example.hiddencam.HiddenCamApplication
+import com.example.hiddencam.R
+import com.example.hiddencam.data.repository.VideoRecordingRepositoryImpl
+import com.example.hiddencam.domain.model.AudioSource
+import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.RecordingState
+import com.example.hiddencam.domain.model.VideoResolution
+import com.example.hiddencam.domain.model.VideoSettings
+import com.example.hiddencam.presentation.MainActivity
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class VideoRecordingService : LifecycleService() {
+    
+    companion object {
+        private const val TAG = "VideoRecordingService"
+        private const val NOTIFICATION_ID = 1001
+        
+        const val ACTION_START_RECORDING = "action_start_recording"
+        const val ACTION_PAUSE_RECORDING = "action_pause_recording"
+        const val ACTION_RESUME_RECORDING = "action_resume_recording"
+        const val ACTION_STOP_RECORDING = "action_stop_recording"
+        
+        fun getIntent(context: Context, action: String): Intent {
+            return Intent(context, VideoRecordingService::class.java).apply {
+                this.action = action
+            }
+        }
+    }
+    
+    @Inject
+    lateinit var videoRecordingRepository: VideoRecordingRepositoryImpl
+    
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var activeRecording: Recording? = null
+    private var cameraExecutor: ExecutorService? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var currentSettings: VideoSettings? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    
+    private val binder = LocalBinder()
+    
+    inner class LocalBinder : Binder() {
+        fun getService(): VideoRecordingService = this@VideoRecordingService
+    }
+    
+    override fun onCreate() {
+        super.onCreate()
+        cameraExecutor = Executors.newSingleThreadExecutor()
+        setupRepositoryCallbacks()
+        acquireWakeLock()
+    }
+    
+    override fun onBind(intent: Intent): IBinder {
+        super.onBind(intent)
+        return binder
+    }
+    
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        
+        when (intent?.action) {
+            ACTION_START_RECORDING -> {
+                // Settings will be passed through repository callback
+            }
+            ACTION_PAUSE_RECORDING -> pauseRecording()
+            ACTION_RESUME_RECORDING -> resumeRecording()
+            ACTION_STOP_RECORDING -> stopRecording()
+        }
+        
+        return START_STICKY
+    }
+    
+    private fun setupRepositoryCallbacks() {
+        videoRecordingRepository.onStartRecording = { settings ->
+            currentSettings = settings
+            startForegroundService()
+            startRecording(settings)
+        }
+        
+        videoRecordingRepository.onPauseRecording = {
+            pauseRecording()
+        }
+        
+        videoRecordingRepository.onResumeRecording = {
+            resumeRecording()
+        }
+        
+        videoRecordingRepository.onStopRecording = {
+            stopRecording()
+        }
+    }
+    
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "HiddenCam::VideoRecordingWakeLock"
+        ).apply {
+            acquire(10 * 60 * 60 * 1000L) // 10 hours max
+        }
+    }
+    
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        wakeLock = null
+    }
+    
+    private fun startForegroundService() {
+        val notification = createNotification("Preparing to record...")
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or 
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+    
+    private fun createNotification(contentText: String): Notification {
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val stopIntent = getIntent(this, ACTION_STOP_RECORDING)
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            1,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        return NotificationCompat.Builder(this, HiddenCamApplication.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Hidden Camera Recording")
+            .setContentText(contentText)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                "Stop",
+                stopPendingIntent
+            )
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+    }
+    
+    private fun updateNotification(contentText: String) {
+        val notification = createNotification(contentText)
+        val notificationManager = getSystemService(android.app.NotificationManager::class.java)
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+    
+    private fun startRecording(settings: VideoSettings) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            try {
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(this@VideoRecordingService)
+                cameraProviderFuture.addListener({
+                    cameraProvider = cameraProviderFuture.get()
+                    bindCameraAndStartRecording(settings)
+                }, ContextCompat.getMainExecutor(this@VideoRecordingService))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting recording", e)
+                videoRecordingRepository.updateRecordingState(
+                    RecordingState.Error("Failed to start recording: ${e.message}")
+                )
+            }
+        }
+    }
+    
+    private fun bindCameraAndStartRecording(settings: VideoSettings) {
+        try {
+            cameraProvider?.unbindAll()
+            
+            val quality = when (settings.resolution) {
+                VideoResolution.SD_480P -> Quality.SD
+                VideoResolution.HD_720P -> Quality.HD
+                VideoResolution.FHD_1080P -> Quality.FHD
+                VideoResolution.UHD_4K -> Quality.UHD
+            }
+            
+            val qualitySelector = QualitySelector.from(quality)
+            
+            val recorder = Recorder.Builder()
+                .setQualitySelector(qualitySelector)
+                .build()
+            
+            videoCapture = VideoCapture.withOutput(recorder)
+            
+            val cameraSelector = when (settings.cameraFacing) {
+                CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
+                CameraFacing.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            
+            cameraProvider?.bindToLifecycle(
+                this,
+                cameraSelector,
+                videoCapture
+            )
+            
+            startVideoCapture(settings)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error binding camera", e)
+            videoRecordingRepository.updateRecordingState(
+                RecordingState.Error("Failed to bind camera: ${e.message}")
+            )
+        }
+    }
+    
+    private fun startVideoCapture(settings: VideoSettings) {
+        val videoCapture = videoCapture ?: return
+        
+        val outputFile = createOutputFile()
+        val outputOptions = FileOutputOptions.Builder(outputFile).build()
+        
+        val pendingRecording = videoCapture.output
+            .prepareRecording(this, outputOptions)
+        
+        // Add audio if enabled
+        if (settings.audioSource != AudioSource.NONE) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                == PackageManager.PERMISSION_GRANTED) {
+                pendingRecording.withAudioEnabled()
+            }
+        }
+        
+        activeRecording = pendingRecording.start(
+            ContextCompat.getMainExecutor(this)
+        ) { recordEvent ->
+            handleRecordEvent(recordEvent)
+        }
+        
+        updateNotification("Recording in progress...")
+    }
+    
+    private fun handleRecordEvent(event: VideoRecordEvent) {
+        when (event) {
+            is VideoRecordEvent.Start -> {
+                Log.d(TAG, "Recording started")
+                videoRecordingRepository.updateRecordingState(RecordingState.Recording())
+            }
+            is VideoRecordEvent.Status -> {
+                val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
+                videoRecordingRepository.updateRecordingState(RecordingState.Recording(durationMs))
+                
+                val durationStr = formatDuration(durationMs)
+                updateNotification("Recording: $durationStr")
+            }
+            is VideoRecordEvent.Pause -> {
+                val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
+                videoRecordingRepository.updateRecordingState(RecordingState.Paused(durationMs))
+                updateNotification("Recording paused")
+            }
+            is VideoRecordEvent.Resume -> {
+                videoRecordingRepository.updateRecordingState(RecordingState.Recording())
+                updateNotification("Recording resumed...")
+            }
+            is VideoRecordEvent.Finalize -> {
+                if (event.hasError()) {
+                    Log.e(TAG, "Recording error: ${event.error}")
+                    videoRecordingRepository.updateRecordingState(
+                        RecordingState.Error("Recording failed with error: ${event.error}")
+                    )
+                } else {
+                    Log.d(TAG, "Recording saved: ${event.outputResults.outputUri}")
+                    // Add to media store
+                    addVideoToMediaStore(event.outputResults.outputUri.path ?: "")
+                }
+                videoRecordingRepository.updateRecordingState(RecordingState.Idle)
+                stopSelf()
+            }
+        }
+    }
+    
+    private fun pauseRecording() {
+        activeRecording?.pause()
+    }
+    
+    private fun resumeRecording() {
+        activeRecording?.resume()
+    }
+    
+    private fun stopRecording() {
+        activeRecording?.stop()
+        activeRecording = null
+    }
+    
+    private fun createOutputFile(): File {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "VID_$timestamp.mp4"
+        
+        val outputDir = File(getExternalFilesDir(null), "Videos")
+        if (!outputDir.exists()) {
+            outputDir.mkdirs()
+        }
+        
+        return File(outputDir, fileName)
+    }
+    
+    private fun addVideoToMediaStore(filePath: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val file = File(filePath)
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/HiddenCam")
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+            
+            val resolver = contentResolver
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
+            
+            uri?.let {
+                resolver.openOutputStream(it)?.use { outputStream ->
+                    file.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                
+                contentValues.clear()
+                contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(it, contentValues, null, null)
+            }
+        }
+    }
+    
+    private fun formatDuration(durationMs: Long): String {
+        val seconds = (durationMs / 1000) % 60
+        val minutes = (durationMs / (1000 * 60)) % 60
+        val hours = (durationMs / (1000 * 60 * 60))
+        
+        return if (hours > 0) {
+            String.format("%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        activeRecording?.stop()
+        cameraProvider?.unbindAll()
+        cameraExecutor?.shutdown()
+        releaseWakeLock()
+    }
+}
