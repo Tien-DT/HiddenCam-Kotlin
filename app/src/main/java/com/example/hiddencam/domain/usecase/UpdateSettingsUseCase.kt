@@ -1,5 +1,7 @@
 package com.example.hiddencam.domain.usecase
 
+import com.example.hiddencam.domain.model.AppIcon
+import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -48,5 +50,13 @@ class UpdateSettingsUseCase @Inject constructor(
     
     suspend fun setFlashEnabled(enabled: Boolean) {
         settingsRepository.setFlashEnabled(enabled)
+    }
+    
+    suspend fun setAppIcon(appIcon: AppIcon) {
+        settingsRepository.setAppIcon(appIcon)
+    }
+    
+    suspend fun setAppName(appName: AppName) {
+        settingsRepository.setAppName(appName)
     }
 }

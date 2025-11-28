@@ -1,5 +1,7 @@
 package com.example.hiddencam.domain.repository
 
+import com.example.hiddencam.domain.model.AppIcon
+import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -67,4 +69,14 @@ interface SettingsRepository {
      * Enable/disable flash light
      */
     suspend fun setFlashEnabled(enabled: Boolean)
+    
+    /**
+     * Update app icon
+     */
+    suspend fun setAppIcon(appIcon: AppIcon)
+    
+    /**
+     * Update app name
+     */
+    suspend fun setAppName(appName: AppName)
 }

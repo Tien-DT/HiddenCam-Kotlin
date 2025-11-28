@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.hiddencam.domain.model.AppIcon
+import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -37,6 +39,8 @@ class SettingsDataStore @Inject constructor(
         val POWER_BUTTON_ENABLED = booleanPreferencesKey("power_button_enabled")
         val ORIENTATION = stringPreferencesKey("orientation")
         val FLASH_ENABLED = booleanPreferencesKey("flash_enabled")
+        val APP_ICON = stringPreferencesKey("app_icon")
+        val APP_NAME = stringPreferencesKey("app_name")
     }
     
     val settingsFlow: Flow<VideoSettings> = context.dataStore.data.map { preferences ->
@@ -59,7 +63,13 @@ class SettingsDataStore @Inject constructor(
             orientation = preferences[PreferencesKeys.ORIENTATION]?.let {
                 VideoOrientation.valueOf(it)
             } ?: VideoOrientation.PORTRAIT,
-            flashEnabled = preferences[PreferencesKeys.FLASH_ENABLED] ?: false
+            flashEnabled = preferences[PreferencesKeys.FLASH_ENABLED] ?: false,
+            appIcon = preferences[PreferencesKeys.APP_ICON]?.let {
+                try { AppIcon.valueOf(it) } catch (e: Exception) { AppIcon.DEFAULT }
+            } ?: AppIcon.DEFAULT,
+            appName = preferences[PreferencesKeys.APP_NAME]?.let {
+                try { AppName.valueOf(it) } catch (e: Exception) { AppName.HIDDEN_CAM }
+            } ?: AppName.HIDDEN_CAM
         )
     }
     
@@ -118,6 +128,18 @@ class SettingsDataStore @Inject constructor(
     suspend fun setFlashEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.FLASH_ENABLED] = enabled
+        }
+    }
+    
+    suspend fun setAppIcon(appIcon: AppIcon) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_ICON] = appIcon.name
+        }
+    }
+    
+    suspend fun setAppName(appName: AppName) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_NAME] = appName.name
         }
     }
 }

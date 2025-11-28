@@ -1,5 +1,6 @@
 package com.example.hiddencam.data.repository
 
+import com.example.hiddencam.data.local.SettingsDataStore
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.domain.repository.VideoRecordingRepository
@@ -14,7 +15,9 @@ import javax.inject.Singleton
  * The actual recording logic is handled by the service.
  */
 @Singleton
-class VideoRecordingRepositoryImpl @Inject constructor() : VideoRecordingRepository {
+class VideoRecordingRepositoryImpl @Inject constructor(
+    private val settingsDataStore: SettingsDataStore
+) : VideoRecordingRepository {
     
     private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
     
@@ -60,5 +63,12 @@ class VideoRecordingRepositoryImpl @Inject constructor() : VideoRecordingReposit
      */
     fun updateRecordingState(state: RecordingState) {
         _recordingState.value = state
+    }
+    
+    /**
+     * Get current settings for widget-initiated recording
+     */
+    suspend fun getSettings(): VideoSettings {
+        return settingsDataStore.getSettings()
     }
 }

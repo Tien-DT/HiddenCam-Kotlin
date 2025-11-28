@@ -107,7 +107,13 @@ class VideoRecordingService : LifecycleService() {
         
         when (intent?.action) {
             ACTION_START_RECORDING -> {
-                // Settings will be passed through repository callback
+                // Start recording from widget - load settings directly
+                lifecycleScope.launch {
+                    val settings = videoRecordingRepository.getSettings()
+                    currentSettings = settings
+                    startForegroundService()
+                    startRecording(settings)
+                }
             }
             ACTION_PAUSE_RECORDING -> pauseRecording()
             ACTION_RESUME_RECORDING -> resumeRecording()
@@ -229,8 +235,8 @@ class VideoRecordingService : LifecycleService() {
         val notificationManager = getSystemService(android.app.NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, notification)
         
-        // Update widget
-        RecordingWidgetReceiver.updateWidget(this, true, duration)
+        // Update widget - recording is active
+        RecordingWidgetReceiver.updateWidget(this, true)
     }
     
     private fun startRecording(settings: VideoSettings) {
@@ -352,7 +358,7 @@ class VideoRecordingService : LifecycleService() {
             is VideoRecordEvent.Start -> {
                 Log.d(TAG, "Recording started")
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording())
-                RecordingWidgetReceiver.updateWidget(this, true, "00:00")
+                RecordingWidgetReceiver.updateWidget(this, true)
             }
             is VideoRecordEvent.Status -> {
                 val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000

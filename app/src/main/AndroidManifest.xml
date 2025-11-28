@@ -44,16 +44,58 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HiddenCam">
         
+        <!-- Main Activity - No launcher intent, will be launched via alias -->
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.HiddenCam">
+        </activity>
+
+        <!-- Default Icon Alias -->
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_default"
+            android:roundIcon="@mipmap/ic_launcher_default"
+            android:label="@string/app_name"
+            android:targetActivity=".presentation.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Molecule Icon Alias (Calculator disguise) -->
+        <activity-alias
+            android:name=".MainActivityMolecule"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_molecule"
+            android:roundIcon="@mipmap/ic_launcher_molecule"
+            android:label="@string/app_name_calculator"
+            android:targetActivity=".presentation.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Gear Icon Alias (Settings disguise) -->
+        <activity-alias
+            android:name=".MainActivityGear"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_gear"
+            android:roundIcon="@mipmap/ic_launcher_gear"
+            android:label="@string/app_name_settings"
+            android:targetActivity=".presentation.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Video Recording Foreground Service -->
         <service

@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CameraFront
 import androidx.compose.material.icons.filled.CameraRear
@@ -54,12 +56,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.hiddencam.domain.model.AppIcon
+import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -217,6 +222,48 @@ fun SettingsScreen(
                     description = "Double tap power button to stop recording",
                     isChecked = currentSettings.powerButtonEnabled,
                     onCheckedChange = { viewModel.setPowerButtonEnabled(it) }
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // App Disguise Section
+            SettingsSectionHeader(title = "App Disguise")
+            
+            SettingsCard {
+                // App Icon
+                DropdownSettingItem(
+                    icon = Icons.Default.Apps,
+                    title = "App Icon",
+                    currentValue = currentSettings.appIcon.displayName,
+                    options = AppIcon.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        AppIcon.entries.find { it.displayName == selected }?.let {
+                            viewModel.setAppIcon(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // App Name
+                DropdownSettingItem(
+                    icon = Icons.AutoMirrored.Filled.Label,
+                    title = "App Name",
+                    currentValue = currentSettings.appName.displayName,
+                    options = AppName.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        AppName.entries.find { it.displayName == selected }?.let {
+                            viewModel.setAppName(it)
+                        }
+                    }
+                )
+                
+                Text(
+                    text = "⚠️ Note: After changing the icon, the app may take a few seconds to update on your home screen. You may need to restart the launcher.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 12.dp)
                 )
             }
             

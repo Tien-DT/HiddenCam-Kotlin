@@ -1,6 +1,8 @@
 package com.example.hiddencam.data.repository
 
 import com.example.hiddencam.data.local.SettingsDataStore
+import com.example.hiddencam.domain.model.AppIcon
+import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -59,5 +61,13 @@ class SettingsRepositoryImpl @Inject constructor(
     
     override suspend fun setFlashEnabled(enabled: Boolean) {
         settingsDataStore.setFlashEnabled(enabled)
+    }
+    
+    override suspend fun setAppIcon(appIcon: AppIcon) {
+        settingsDataStore.setAppIcon(appIcon)
+    }
+    
+    override suspend fun setAppName(appName: AppName) {
+        settingsDataStore.setAppName(appName)
     }
 }

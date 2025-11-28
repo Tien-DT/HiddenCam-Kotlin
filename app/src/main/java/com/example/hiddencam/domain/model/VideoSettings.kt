@@ -12,7 +12,9 @@ data class VideoSettings(
     val volumeButtonEnabled: Boolean = true,
     val powerButtonEnabled: Boolean = true,
     val orientation: VideoOrientation = VideoOrientation.PORTRAIT,
-    val flashEnabled: Boolean = false
+    val flashEnabled: Boolean = false,
+    val appIcon: AppIcon = AppIcon.DEFAULT,
+    val appName: AppName = AppName.HIDDEN_CAM
 )
 
 enum class CameraFacing {
@@ -43,4 +45,17 @@ enum class AudioSource(val displayName: String) {
 enum class VideoOrientation(val displayName: String) {
     PORTRAIT("Portrait (Dọc)"),
     LANDSCAPE("Landscape (Ngang)")
+}
+
+enum class AppIcon(val displayName: String, val aliasName: String) {
+    DEFAULT("Default (X Logo)", ".MainActivityDefault"),
+    MOLECULE("Calculator", ".MainActivityMolecule"),
+    GEAR("Settings", ".MainActivityGear")
+}
+
+enum class AppName(val displayName: String, val labelResName: String) {
+    HIDDEN_CAM("HiddenCam", "app_name"),
+    CALCULATOR("Calculator", "app_name_calculator"),
+    NOTES("Notes", "app_name_notes"),
+    SETTINGS("Settings", "app_name_settings")
 }
