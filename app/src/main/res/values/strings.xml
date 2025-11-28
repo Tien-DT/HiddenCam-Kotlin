@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">HiddenCam</string>
+    <string name="widget_description">Quick recording widget - tap to start/stop recording</string>
+    <string name="widget_tap_to_record">Tap to Record</string>
+    <string name="widget_recording">Recording…</string>
+    <string name="widget_tap_to_stop">Tap to Stop</string>
+    <string name="widget_record_button">Record button</string>
 </resources>

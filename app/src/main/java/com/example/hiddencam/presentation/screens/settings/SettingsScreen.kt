@@ -17,8 +17,10 @@ import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CameraFront
 import androidx.compose.material.icons.filled.CameraRear
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Power
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Card
@@ -48,12 +50,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 
@@ -143,6 +147,32 @@ fun SettingsScreen(
                             viewModel.setBitrate(it)
                         }
                     }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Orientation
+                DropdownSettingItem(
+                    icon = Icons.Default.ScreenRotation,
+                    title = "Video Orientation",
+                    currentValue = currentSettings.orientation.displayName,
+                    options = VideoOrientation.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        VideoOrientation.entries.find { it.displayName == selected }?.let {
+                            viewModel.setOrientation(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Flash
+                SwitchSettingItem(
+                    icon = Icons.Default.FlashOn,
+                    title = "Flash Light",
+                    description = "Enable flash/torch while recording (back camera only)",
+                    isChecked = currentSettings.flashEnabled,
+                    onCheckedChange = { viewModel.setFlashEnabled(it) }
                 )
             }
             

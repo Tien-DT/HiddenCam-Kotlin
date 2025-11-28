@@ -16,6 +16,8 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.provider.MediaStore
 import android.util.Log
+import android.view.Surface
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
@@ -36,9 +38,11 @@ import com.example.hiddencam.data.repository.VideoRecordingRepositoryImpl
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.RecordingState
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.presentation.MainActivity
+import com.example.hiddencam.presentation.widget.RecordingWidgetReceiver
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,6 +82,7 @@ class VideoRecordingService : LifecycleService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var currentSettings: VideoSettings? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
     
     private val binder = LocalBinder()
     
@@ -166,8 +171,10 @@ class VideoRecordingService : LifecycleService() {
         }
     }
     
-    private fun createNotification(contentText: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
+    private fun createNotification(contentText: String, duration: String = ""): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -183,25 +190,47 @@ class VideoRecordingService : LifecycleService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        return NotificationCompat.Builder(this, HiddenCamApplication.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Hidden Camera Recording")
-            .setContentText(contentText)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+        val pauseIntent = getIntent(this, ACTION_PAUSE_RECORDING)
+        val pausePendingIntent = PendingIntent.getService(
+            this,
+            2,
+            pauseIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val cameraInfo = currentSettings?.let { 
+            "${it.cameraFacing.name} • ${it.resolution.displayName}" 
+        } ?: ""
+        
+        val builder = NotificationCompat.Builder(this, HiddenCamApplication.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("🔴 Recording Video")
+            .setContentText(if (duration.isNotEmpty()) "Duration: $duration" else contentText)
+            .setSubText(cameraInfo)
+            .setSmallIcon(R.drawable.ic_videocam)
             .setContentIntent(pendingIntent)
             .addAction(
-                android.R.drawable.ic_media_pause,
-                "Stop",
+                R.drawable.ic_stop_recording,
+                "⏹ Stop",
                 stopPendingIntent
             )
             .setOngoing(true)
             .setSilent(true)
-            .build()
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+        
+        return builder.build()
     }
     
-    private fun updateNotification(contentText: String) {
-        val notification = createNotification(contentText)
+    private fun updateNotification(contentText: String, duration: String = "") {
+        val notification = createNotification(contentText, duration)
         val notificationManager = getSystemService(android.app.NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, notification)
+        
+        // Update widget
+        RecordingWidgetReceiver.updateWidget(this, true, duration)
     }
     
     private fun startRecording(settings: VideoSettings) {
@@ -263,11 +292,24 @@ class VideoRecordingService : LifecycleService() {
             
             videoCapture = VideoCapture.withOutput(recorder)
             
-            cameraProvider?.bindToLifecycle(
+            // Set target rotation based on orientation setting
+            val targetRotation = when (settings.orientation) {
+                VideoOrientation.PORTRAIT -> Surface.ROTATION_0
+                VideoOrientation.LANDSCAPE -> Surface.ROTATION_90
+            }
+            videoCapture?.targetRotation = targetRotation
+            
+            camera = cameraProvider?.bindToLifecycle(
                 this,
                 cameraSelector,
                 videoCapture
             )
+            
+            // Enable flash/torch if requested and available (back camera only)
+            if (settings.flashEnabled && settings.cameraFacing == CameraFacing.BACK) {
+                camera?.cameraControl?.enableTorch(true)
+                Log.d(TAG, "Flash enabled")
+            }
             
             startVideoCapture(settings)
             
@@ -310,24 +352,31 @@ class VideoRecordingService : LifecycleService() {
             is VideoRecordEvent.Start -> {
                 Log.d(TAG, "Recording started")
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording())
+                RecordingWidgetReceiver.updateWidget(this, true, "00:00")
             }
             is VideoRecordEvent.Status -> {
                 val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording(durationMs))
                 
                 val durationStr = formatDuration(durationMs)
-                updateNotification("Recording: $durationStr")
+                updateNotification("Recording in progress", durationStr)
             }
             is VideoRecordEvent.Pause -> {
                 val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
                 videoRecordingRepository.updateRecordingState(RecordingState.Paused(durationMs))
-                updateNotification("Recording paused")
+                updateNotification("Recording paused", formatDuration(durationMs))
             }
             is VideoRecordEvent.Resume -> {
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording())
-                updateNotification("Recording resumed...")
+                updateNotification("Recording resumed")
             }
             is VideoRecordEvent.Finalize -> {
+                // Turn off flash
+                camera?.cameraControl?.enableTorch(false)
+                
+                // Update widget
+                RecordingWidgetReceiver.updateWidget(this, false)
+                
                 if (event.hasError()) {
                     Log.e(TAG, "Recording error: ${event.error}")
                     videoRecordingRepository.updateRecordingState(
@@ -353,8 +402,11 @@ class VideoRecordingService : LifecycleService() {
     }
     
     private fun stopRecording() {
+        // Turn off flash
+        camera?.cameraControl?.enableTorch(false)
         activeRecording?.stop()
         activeRecording = null
+        RecordingWidgetReceiver.updateWidget(this, false)
     }
     
     private fun createOutputFile(): File {

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.domain.usecase.GetSettingsUseCase
@@ -68,6 +69,18 @@ class SettingsViewModel @Inject constructor(
     fun setPowerButtonEnabled(enabled: Boolean) {
         viewModelScope.launch {
             updateSettingsUseCase.setPowerButtonEnabled(enabled)
+        }
+    }
+    
+    fun setOrientation(orientation: VideoOrientation) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setOrientation(orientation)
+        }
+    }
+    
+    fun setFlashEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setFlashEnabled(enabled)
         }
     }
 }

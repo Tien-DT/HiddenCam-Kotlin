@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,6 +35,8 @@ class SettingsDataStore @Inject constructor(
         val AUDIO_SOURCE = stringPreferencesKey("audio_source")
         val VOLUME_BUTTON_ENABLED = booleanPreferencesKey("volume_button_enabled")
         val POWER_BUTTON_ENABLED = booleanPreferencesKey("power_button_enabled")
+        val ORIENTATION = stringPreferencesKey("orientation")
+        val FLASH_ENABLED = booleanPreferencesKey("flash_enabled")
     }
     
     val settingsFlow: Flow<VideoSettings> = context.dataStore.data.map { preferences ->
@@ -52,7 +55,11 @@ class SettingsDataStore @Inject constructor(
                 AudioSource.valueOf(it) 
             } ?: AudioSource.MICROPHONE,
             volumeButtonEnabled = preferences[PreferencesKeys.VOLUME_BUTTON_ENABLED] ?: true,
-            powerButtonEnabled = preferences[PreferencesKeys.POWER_BUTTON_ENABLED] ?: true
+            powerButtonEnabled = preferences[PreferencesKeys.POWER_BUTTON_ENABLED] ?: true,
+            orientation = preferences[PreferencesKeys.ORIENTATION]?.let {
+                VideoOrientation.valueOf(it)
+            } ?: VideoOrientation.PORTRAIT,
+            flashEnabled = preferences[PreferencesKeys.FLASH_ENABLED] ?: false
         )
     }
     
@@ -99,6 +106,18 @@ class SettingsDataStore @Inject constructor(
     suspend fun setPowerButtonEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.POWER_BUTTON_ENABLED] = enabled
+        }
+    }
+    
+    suspend fun setOrientation(orientation: VideoOrientation) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ORIENTATION] = orientation.name
+        }
+    }
+    
+    suspend fun setFlashEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FLASH_ENABLED] = enabled
         }
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -37,6 +38,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -60,6 +62,7 @@ import com.example.hiddencam.data.service.VideoRecordingService
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
+import com.example.hiddencam.presentation.util.BatteryOptimizationHelper
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +76,9 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    var showBatteryOptimizationWarning by remember { 
+        mutableStateOf(!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) 
+    }
     
     Scaffold(
         topBar = {
@@ -100,6 +106,18 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Battery Optimization Warning
+            if (showBatteryOptimizationWarning && allPermissionsGranted) {
+                BatteryOptimizationCard(
+                    onRequestOptimization = {
+                        BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
+                        showBatteryOptimizationWarning = false
+                    },
+                    onDismiss = { showBatteryOptimizationWarning = false }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            
             // Status Card
             StatusCard(
                 recordingState = recordingState,
@@ -133,6 +151,53 @@ fun HomeScreen(
             
             // Quick Tips
             QuickTipsCard(settings = settings)
+        }
+    }
+}
+
+@Composable
+private fun BatteryOptimizationCard(
+    onRequestOptimization: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFF3E0)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.BatteryAlert,
+                contentDescription = null,
+                tint = Color(0xFFFF9800),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Battery Optimization",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color(0xFFE65100)
+                )
+                Text(
+                    text = "Disable battery optimization to prevent recording from stopping",
+                    fontSize = 12.sp,
+                    color = Color(0xFF795548)
+                )
+            }
+            TextButton(onClick = onRequestOptimization) {
+                Text("Allow", color = Color(0xFFFF5722))
+            }
+            TextButton(onClick = onDismiss) {
+                Text("Later", color = Color.Gray)
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ package com.example.hiddencam.domain.repository
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import kotlinx.coroutines.flow.Flow
@@ -56,4 +57,14 @@ interface SettingsRepository {
      * Enable/disable power button control
      */
     suspend fun setPowerButtonEnabled(enabled: Boolean)
+    
+    /**
+     * Update video orientation (portrait/landscape)
+     */
+    suspend fun setOrientation(orientation: VideoOrientation)
+    
+    /**
+     * Enable/disable flash light
+     */
+    suspend fun setFlashEnabled(enabled: Boolean)
 }

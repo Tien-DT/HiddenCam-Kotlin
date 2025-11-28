@@ -4,6 +4,7 @@ import com.example.hiddencam.data.local.SettingsDataStore
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.VideoBitrate
+import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.domain.repository.SettingsRepository
@@ -50,5 +51,13 @@ class SettingsRepositoryImpl @Inject constructor(
     
     override suspend fun setPowerButtonEnabled(enabled: Boolean) {
         settingsDataStore.setPowerButtonEnabled(enabled)
+    }
+    
+    override suspend fun setOrientation(orientation: VideoOrientation) {
+        settingsDataStore.setOrientation(orientation)
+    }
+    
+    override suspend fun setFlashEnabled(enabled: Boolean) {
+        settingsDataStore.setFlashEnabled(enabled)
     }
 }

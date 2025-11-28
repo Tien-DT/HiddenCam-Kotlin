@@ -10,7 +10,9 @@ data class VideoSettings(
     val bitrate: VideoBitrate = VideoBitrate.MEDIUM,
     val audioSource: AudioSource = AudioSource.MICROPHONE,
     val volumeButtonEnabled: Boolean = true,
-    val powerButtonEnabled: Boolean = true
+    val powerButtonEnabled: Boolean = true,
+    val orientation: VideoOrientation = VideoOrientation.PORTRAIT,
+    val flashEnabled: Boolean = false
 )
 
 enum class CameraFacing {
@@ -36,4 +38,9 @@ enum class AudioSource(val displayName: String) {
     NONE("No Audio"),
     MICROPHONE("Microphone"),
     CAMCORDER("Camcorder (optimized)")
+}
+
+enum class VideoOrientation(val displayName: String) {
+    PORTRAIT("Portrait (Dọc)"),
+    LANDSCAPE("Landscape (Ngang)")
 }
