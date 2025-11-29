@@ -162,9 +162,60 @@ App Android quay video ẩn từ camera trước/sau, hỗ trợ chạy nền v�
 
 #### Improvements Needed
 - [ ] Test on physical device
-- [ ] Add video gallery screen
+- [x] Add video gallery screen ✅
 - [ ] Add video playback
 - [ ] Improve hardware button detection
+
+### 6. New Features - Session 5: Security & Video Gallery ✅
+
+#### App Lock Feature
+- [x] **PIN Lock** - 4-digit PIN protection
+- [x] **PIN Setup Mode** - Create and confirm PIN
+- [x] **PIN Verify Mode** - Unlock app with PIN
+- [x] **SHA-256 PIN Hashing** - Secure PIN storage
+- [x] **Biometric Option** - Fingerprint/Face unlock
+- [x] **BiometricPrompt Integration** - Native Android biometric API
+
+#### Video Gallery Feature
+- [x] **Video Gallery Screen** - View all recorded videos
+- [x] **Video Thumbnails** - Coil image loading
+- [x] **Video Info Display** - Duration, size, date
+- [x] **Video Playback** - Open with external player
+- [x] **Video Sharing** - Share videos via intent
+- [x] **Video Deletion** - Delete with confirmation dialog
+- [x] **Empty State UI** - Message when no videos
+
+#### Bluetooth Remote Feature
+- [x] **Bluetooth Remote Setting** - Enable/disable in settings
+- [x] **Device Pairing UI** - Select from bonded devices
+- [x] **BluetoothRemoteReceiver** - Media button receiver
+- [x] **Toggle Recording** - PLAY/PAUSE button to toggle
+- [x] **Stop Recording** - STOP button support
+
+#### Files Created
+| File | Purpose |
+|------|---------|
+| AppLockSettings.kt | Model for app lock config |
+| BluetoothRemoteSettings.kt | Model for Bluetooth remote config |
+| VideoItem.kt | Model for video items with formatted properties |
+| SecurityDataStore.kt | DataStore for security settings (PIN, biometric, Bluetooth) |
+| VideoGalleryRepository.kt | Repository for MediaStore video queries |
+| PinLockScreen.kt | PIN lock UI with numpad and biometric |
+| VideoGalleryScreen.kt | Video gallery grid with thumbnails |
+| VideoGalleryViewModel.kt | ViewModel for gallery screen |
+| SecurityModule.kt | Hilt module for SecurityDataStore and VideoGalleryRepository |
+| BluetoothRemoteReceiver.kt | BroadcastReceiver for media button events |
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| SettingsScreen.kt | + Security section (App Lock), + Bluetooth Remote section |
+| HomeScreen.kt | + Video gallery button (VideoLibrary icon) |
+| AppNavigation.kt | + Routes: PinLock, PinSetup, VideoGallery |
+| MainActivity.kt | + SecurityDataStore injection, + isAppUnlocked state |
+| VideoRecordingService.kt | + ACTION_TOGGLE_RECORDING for Bluetooth remote |
+| build.gradle.kts | + biometric 1.1.0, + coil-compose 2.5.0 |
+| AndroidManifest.xml | + Bluetooth permissions, + USE_BIOMETRIC, + BluetoothRemoteReceiver |
 
 ## File Structure
 ```

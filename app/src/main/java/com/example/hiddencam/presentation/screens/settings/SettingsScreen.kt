@@ -1,5 +1,15 @@
 package com.example.hiddencam.presentation.screens.settings
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,18 +27,24 @@ import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CameraFront
 import androidx.compose.material.icons.filled.CameraRear
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Exposure
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Iso
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ShutterSpeed
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -40,10 +56,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -51,15 +69,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.hiddencam.data.datastore.SecurityDataStore
 import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
@@ -72,6 +94,7 @@ import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
+import kotlinx.coroutines.launch
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,9 +102,35 @@ import com.example.hiddencam.domain.model.VideoSettings
 fun SettingsScreen(
     settings: VideoSettings,
     onNavigateBack: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel()
+    onNavigateToPinSetup: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+    securityDataStore: SecurityDataStore
 ) {
     val currentSettings by viewModel.settings.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // Security settings state
+    val appLockEnabled by securityDataStore.appLockEnabled.collectAsState(initial = false)
+    val biometricEnabled by securityDataStore.biometricEnabled.collectAsState(initial = false)
+    val lockTimeout by securityDataStore.lockTimeout.collectAsState(initial = 0)
+    val bluetoothRemoteEnabled by securityDataStore.bluetoothRemoteEnabled.collectAsState(initial = false)
+    val pairedDeviceName by securityDataStore.pairedDeviceName.collectAsState(initial = null)
+    
+    // Bluetooth pairing dialog state
+    var showBluetoothPairingDialog by remember { mutableStateOf(false) }
+    
+    // Bluetooth permission launcher
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            showBluetoothPairingDialog = true
+        } else {
+            Toast.makeText(context, "Bluetooth permission required", Toast.LENGTH_SHORT).show()
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -369,9 +418,220 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            // Security Section
+            SettingsSectionHeader(title = "Security")
+            
+            SettingsCard {
+                // App Lock Toggle
+                SwitchSettingItem(
+                    icon = Icons.Default.Lock,
+                    title = "App Lock",
+                    description = if (appLockEnabled) "PIN protection enabled" else "Protect app with PIN",
+                    isChecked = appLockEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) {
+                            // Navigate to PIN setup
+                            onNavigateToPinSetup()
+                        } else {
+                            // Disable app lock
+                            scope.launch {
+                                securityDataStore.setAppLockEnabled(false)
+                            }
+                        }
+                    }
+                )
+                
+                if (appLockEnabled) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Change PIN
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToPinSetup() }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Password,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        Spacer(modifier = Modifier.width(16.dp))
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Change PIN",
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = "Set a new 4-digit PIN",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Biometric Toggle
+                    SwitchSettingItem(
+                        icon = Icons.Default.Fingerprint,
+                        title = "Biometric Unlock",
+                        description = "Use fingerprint or face to unlock",
+                        isChecked = biometricEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch {
+                                securityDataStore.setBiometricEnabled(enabled)
+                            }
+                        }
+                    )
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Lock Timeout
+                    val lockTimeoutOptions = listOf(
+                        0 to "Immediately",
+                        1 to "After 1 minute",
+                        2 to "After 2 minutes",
+                        5 to "After 5 minutes",
+                        10 to "After 10 minutes"
+                    )
+                    val currentTimeoutLabel = lockTimeoutOptions.find { it.first == lockTimeout }?.second ?: "Immediately"
+                    
+                    DropdownSettingItem(
+                        icon = Icons.Default.Lock,
+                        title = "Lock After",
+                        currentValue = currentTimeoutLabel,
+                        options = lockTimeoutOptions.map { it.second },
+                        onOptionSelected = { selected ->
+                            val timeout = lockTimeoutOptions.find { it.second == selected }?.first ?: 0
+                            scope.launch {
+                                securityDataStore.setLockTimeout(timeout)
+                            }
+                        }
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Bluetooth Remote Section
+            SettingsSectionHeader(title = "Bluetooth Remote")
+            
+            SettingsCard {
+                SwitchSettingItem(
+                    icon = Icons.Default.Bluetooth,
+                    title = "Bluetooth Remote",
+                    description = "Control recording with Bluetooth remote",
+                    isChecked = bluetoothRemoteEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            securityDataStore.setBluetoothRemoteEnabled(enabled)
+                        }
+                    }
+                )
+                
+                if (bluetoothRemoteEnabled) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Paired Device Info / Pairing Button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                // Check Bluetooth permissions
+                                val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    arrayOf(
+                                        Manifest.permission.BLUETOOTH_CONNECT,
+                                        Manifest.permission.BLUETOOTH_SCAN
+                                    )
+                                } else {
+                                    arrayOf(Manifest.permission.BLUETOOTH)
+                                }
+                                
+                                val allGranted = permissions.all {
+                                    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+                                }
+                                
+                                if (allGranted) {
+                                    showBluetoothPairingDialog = true
+                                } else {
+                                    bluetoothPermissionLauncher.launch(permissions)
+                                }
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (pairedDeviceName != null) 
+                                Icons.Default.BluetoothConnected 
+                            else 
+                                Icons.Default.Bluetooth,
+                            contentDescription = null,
+                            tint = if (pairedDeviceName != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.outline
+                        )
+                        
+                        Spacer(modifier = Modifier.width(16.dp))
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (pairedDeviceName != null) "Paired Device" else "Pair Remote",
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = pairedDeviceName ?: "Tap to select a Bluetooth remote",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        
+                        if (pairedDeviceName != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        securityDataStore.clearPairedDevice()
+                                    }
+                                }
+                            ) {
+                                Text("Unpair")
+                            }
+                        }
+                    }
+                    
+                    Text(
+                        text = "⚠️ Note: Bluetooth remote works best when app is in foreground. Some remotes may not work when screen is locked.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             // Info Card
             InfoCard()
         }
+    }
+    
+    // Bluetooth Pairing Dialog
+    if (showBluetoothPairingDialog) {
+        BluetoothPairingDialog(
+            context = context,
+            onDismiss = { showBluetoothPairingDialog = false },
+            onDeviceSelected = { name, address ->
+                scope.launch {
+                    securityDataStore.setPairedDevice(name, address)
+                }
+            }
+        )
     }
 }
 
@@ -702,4 +962,106 @@ private fun InfoCard() {
             )
         }
     }
+}
+
+@SuppressLint("MissingPermission")
+@Composable
+private fun BluetoothPairingDialog(
+    context: Context,
+    onDismiss: () -> Unit,
+    onDeviceSelected: (String, String) -> Unit
+) {
+    val hasBluetoothPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+    } else {
+        true
+    }
+    
+    val bondedDevices = remember(hasBluetoothPermission) {
+        if (!hasBluetoothPermission) return@remember emptyList<BluetoothDevice>()
+        
+        try {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val bluetoothAdapter = bluetoothManager?.adapter
+            bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Bluetooth Remote") },
+        text = {
+            Column {
+                if (bondedDevices.isEmpty()) {
+                    Text(
+                        text = "No paired Bluetooth devices found.\n\nPlease pair your Bluetooth remote in system settings first.",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                } else {
+                    Text(
+                        text = "Select a paired device:",
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    bondedDevices.forEach { device ->
+                        val deviceName = try {
+                            device.name ?: "Unknown Device"
+                        } catch (e: SecurityException) {
+                            "Unknown Device"
+                        }
+                        
+                        val deviceAddress = try {
+                            device.address ?: ""
+                        } catch (e: SecurityException) {
+                            ""
+                        }
+                        
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    onDeviceSelected(deviceName, deviceAddress)
+                                    onDismiss()
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = deviceName,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = deviceAddress,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

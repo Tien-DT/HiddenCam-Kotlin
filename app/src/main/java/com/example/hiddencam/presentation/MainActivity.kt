@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.view.KeyEvent
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import com.example.hiddencam.data.datastore.SecurityDataStore
 import com.example.hiddencam.data.service.VideoRecordingService
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
@@ -37,13 +38,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     
     @Inject
     lateinit var videoRecordingRepository: VideoRecordingRepository
     
     @Inject
     lateinit var settingsRepository: SettingsRepository
+    
+    @Inject
+    lateinit var securityDataStore: SecurityDataStore
     
     private var videoRecordingService: VideoRecordingService? = null
     private var isBound = false
@@ -53,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private var lastPowerButtonPressTime = 0L
     
     private var allPermissionsGranted by mutableStateOf(false)
+    private var isAppUnlocked by mutableStateOf(false)
     
     private val requiredPermissions = mutableListOf(
         Manifest.permission.CAMERA,
@@ -106,7 +111,10 @@ class MainActivity : ComponentActivity() {
                         recordingState = recordingState,
                         settings = settings,
                         allPermissionsGranted = allPermissionsGranted,
-                        onRequestPermissions = { checkAndRequestPermissions() }
+                        onRequestPermissions = { checkAndRequestPermissions() },
+                        securityDataStore = securityDataStore,
+                        isAppUnlocked = isAppUnlocked,
+                        onAppUnlocked = { isAppUnlocked = true }
                     )
                 }
             }
@@ -120,6 +128,13 @@ class MainActivity : ComponentActivity() {
             serviceConnection,
             Context.BIND_AUTO_CREATE
         )
+        
+        // Check if app should be locked based on timeout
+        lifecycleScope.launch {
+            if (securityDataStore.shouldLockApp()) {
+                isAppUnlocked = false
+            }
+        }
     }
     
     override fun onStop() {
@@ -127,6 +142,11 @@ class MainActivity : ComponentActivity() {
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false
+        }
+        
+        // Save the time when app goes to background
+        lifecycleScope.launch {
+            securityDataStore.setLastBackgroundTime(System.currentTimeMillis())
         }
     }
     

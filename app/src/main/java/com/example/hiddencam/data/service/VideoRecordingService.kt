@@ -75,6 +75,7 @@ class VideoRecordingService : LifecycleService() {
         const val ACTION_PAUSE_RECORDING = "action_pause_recording"
         const val ACTION_RESUME_RECORDING = "action_resume_recording"
         const val ACTION_STOP_RECORDING = "action_stop_recording"
+        const val ACTION_TOGGLE_RECORDING = "action_toggle_recording"
         
         fun getIntent(context: Context, action: String): Intent {
             return Intent(context, VideoRecordingService::class.java).apply {
@@ -128,6 +129,27 @@ class VideoRecordingService : LifecycleService() {
             ACTION_PAUSE_RECORDING -> pauseRecording()
             ACTION_RESUME_RECORDING -> resumeRecording()
             ACTION_STOP_RECORDING -> stopRecording()
+            ACTION_TOGGLE_RECORDING -> {
+                // Toggle recording state - used by Bluetooth remote
+                lifecycleScope.launch {
+                    val currentState = videoRecordingRepository.getCurrentState()
+                    when (currentState) {
+                        is RecordingState.Idle, is RecordingState.Error -> {
+                            val settings = videoRecordingRepository.getSettings()
+                            currentSettings = settings
+                            startForegroundService()
+                            startRecording(settings)
+                        }
+                        is RecordingState.Recording -> {
+                            pauseRecording()
+                        }
+                        is RecordingState.Paused -> {
+                            resumeRecording()
+                        }
+                        else -> { /* Do nothing */ }
+                    }
+                }
+            }
         }
         
         return START_STICKY
@@ -187,7 +209,7 @@ class VideoRecordingService : LifecycleService() {
         }
     }
     
-    private fun createNotification(contentText: String, duration: String = ""): Notification {
+    private fun createNotification(contentText: String, duration: String = "", isPaused: Boolean = false): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -206,11 +228,16 @@ class VideoRecordingService : LifecycleService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        val pauseIntent = getIntent(this, ACTION_PAUSE_RECORDING)
-        val pausePendingIntent = PendingIntent.getService(
+        // Pause/Resume action
+        val pauseResumeIntent = if (isPaused) {
+            getIntent(this, ACTION_RESUME_RECORDING)
+        } else {
+            getIntent(this, ACTION_PAUSE_RECORDING)
+        }
+        val pauseResumePendingIntent = PendingIntent.getService(
             this,
             2,
-            pauseIntent,
+            pauseResumeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
@@ -218,12 +245,23 @@ class VideoRecordingService : LifecycleService() {
             "${it.cameraFacing.name} • ${it.resolution.displayName}" 
         } ?: ""
         
+        // Title: just show duration or preparing text
+        val title = if (duration.isNotEmpty()) {
+            if (isPaused) "⏸ $duration" else "🔴 $duration"
+        } else {
+            contentText
+        }
+        
         val builder = NotificationCompat.Builder(this, HiddenCamApplication.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("🔴 Recording Video")
-            .setContentText(if (duration.isNotEmpty()) "Duration: $duration" else contentText)
-            .setSubText(cameraInfo)
+            .setContentTitle(title)
+            .setContentText(cameraInfo)
             .setSmallIcon(R.drawable.ic_videocam)
             .setContentIntent(pendingIntent)
+            .addAction(
+                if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
+                if (isPaused) "▶ Resume" else "⏸ Pause",
+                pauseResumePendingIntent
+            )
             .addAction(
                 R.drawable.ic_stop_recording,
                 "⏹ Stop",
@@ -234,14 +272,12 @@ class VideoRecordingService : LifecycleService() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setShowWhen(true)
-            .setUsesChronometer(true)
         
         return builder.build()
     }
     
-    private fun updateNotification(contentText: String, duration: String = "") {
-        val notification = createNotification(contentText, duration)
+    private fun updateNotification(contentText: String, duration: String = "", isPaused: Boolean = false) {
+        val notification = createNotification(contentText, duration, isPaused)
         val notificationManager = getSystemService(android.app.NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, notification)
         
@@ -509,16 +545,16 @@ class VideoRecordingService : LifecycleService() {
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording(durationMs))
                 
                 val durationStr = formatDuration(durationMs)
-                updateNotification("Recording in progress", durationStr)
+                updateNotification("", durationStr, isPaused = false)
             }
             is VideoRecordEvent.Pause -> {
                 val durationMs = event.recordingStats.recordedDurationNanos / 1_000_000
                 videoRecordingRepository.updateRecordingState(RecordingState.Paused(durationMs))
-                updateNotification("Recording paused", formatDuration(durationMs))
+                updateNotification("", formatDuration(durationMs), isPaused = true)
             }
             is VideoRecordEvent.Resume -> {
                 videoRecordingRepository.updateRecordingState(RecordingState.Recording())
-                updateNotification("Recording resumed")
+                updateNotification("", "", isPaused = false)
             }
             is VideoRecordEvent.Finalize -> {
                 // Turn off flash

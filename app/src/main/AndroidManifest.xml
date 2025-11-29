@@ -27,6 +27,18 @@
     
     <!-- Battery optimization exemption - important for background recording -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    
+    <!-- Bluetooth permissions for remote control -->
+    <uses-permission android:name="android.permission.BLUETOOTH" 
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    
+    <!-- Biometric permission -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Camera feature -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -114,6 +126,15 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/recording_widget_info" />
+        </receiver>
+        
+        <!-- Bluetooth Remote Receiver for media button events -->
+        <receiver
+            android:name=".data.service.BluetoothRemoteReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
         </receiver>
 
         <!-- Provider for saving videos -->
