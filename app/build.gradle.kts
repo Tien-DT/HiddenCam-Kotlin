@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.hiddencam"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -84,6 +84,10 @@ dependencies {
     
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
+    
+    // NanoHTTPD for embedded web server
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

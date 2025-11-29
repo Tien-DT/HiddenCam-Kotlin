@@ -56,6 +56,10 @@ class SettingsDataStore @Inject constructor(
         // Recording mode settings
         val RECORDING_MODE = stringPreferencesKey("recording_mode")
         val LOOP_RECORDING_MIN_FREE_GB = intPreferencesKey("loop_recording_min_free_gb")
+        // Web Server settings
+        val WEB_SERVER_ENABLED = booleanPreferencesKey("web_server_enabled")
+        val WEB_SERVER_PORT = intPreferencesKey("web_server_port")
+        val WEB_SERVER_PASSWORD = stringPreferencesKey("web_server_password")
     }
     
     val settingsFlow: Flow<VideoSettings> = context.dataStore.data.map { preferences ->
@@ -102,7 +106,11 @@ class SettingsDataStore @Inject constructor(
             recordingMode = preferences[PreferencesKeys.RECORDING_MODE]?.let {
                 try { RecordingMode.valueOf(it) } catch (e: Exception) { RecordingMode.MANUAL }
             } ?: RecordingMode.MANUAL,
-            loopRecordingMinFreeGB = preferences[PreferencesKeys.LOOP_RECORDING_MIN_FREE_GB] ?: 2
+            loopRecordingMinFreeGB = preferences[PreferencesKeys.LOOP_RECORDING_MIN_FREE_GB] ?: 2,
+            // Web Server settings
+            webServerEnabled = preferences[PreferencesKeys.WEB_SERVER_ENABLED] ?: false,
+            webServerPort = preferences[PreferencesKeys.WEB_SERVER_PORT] ?: 8080,
+            webServerPassword = preferences[PreferencesKeys.WEB_SERVER_PASSWORD] ?: "hiddencam123"
         )
     }
     
@@ -223,6 +231,25 @@ class SettingsDataStore @Inject constructor(
     suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LOOP_RECORDING_MIN_FREE_GB] = minFreeGB
+        }
+    }
+
+    // Web Server settings
+    suspend fun setWebServerEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WEB_SERVER_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setWebServerPort(port: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WEB_SERVER_PORT] = port
+        }
+    }
+
+    suspend fun setWebServerPassword(password: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WEB_SERVER_PASSWORD] = password
         }
     }
 }

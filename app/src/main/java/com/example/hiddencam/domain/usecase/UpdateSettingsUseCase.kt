@@ -97,4 +97,18 @@ class UpdateSettingsUseCase @Inject constructor(
     suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
         settingsRepository.setLoopRecordingMinFreeGB(minFreeGB)
     }
+
+    // Web Server settings
+
+    suspend fun setWebServerEnabled(enabled: Boolean) {
+        settingsRepository.setWebServerEnabled(enabled)
+    }
+
+    suspend fun setWebServerPort(port: Int) {
+        settingsRepository.setWebServerPort(port)
+    }
+
+    suspend fun setWebServerPassword(password: String) {
+        settingsRepository.setWebServerPassword(password)
+    }
 }

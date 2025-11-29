@@ -108,4 +108,18 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
         settingsDataStore.setLoopRecordingMinFreeGB(minFreeGB)
     }
+
+    // Web Server settings
+    
+    override suspend fun setWebServerEnabled(enabled: Boolean) {
+        settingsDataStore.setWebServerEnabled(enabled)
+    }
+
+    override suspend fun setWebServerPort(port: Int) {
+        settingsDataStore.setWebServerPort(port)
+    }
+
+    override suspend fun setWebServerPassword(password: String) {
+        settingsDataStore.setWebServerPassword(password)
+    }
 }

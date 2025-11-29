@@ -652,3 +652,150 @@ object StorageUtil {
 - **versionName:** 1.2
 
 ---
+
+## Version 1.3 - Quick Controls Enhancement ✅
+
+### New Features
+
+#### Screen-Off Volume Control
+- **VolumeKeyAccessibilityService.kt** - Accessibility service for volume button detection when screen off
+- **Double-press detection** - 500ms timeout for double press volume down
+- **Works both screen on/off** - Seamless recording control in any state
+
+#### Vibration Feedback
+- **VibrationUtil.kt** - Utility class for haptic feedback patterns
+- **Recording started** - 2 short vibrations
+- **Recording stopped** - 3 short vibrations  
+- **Error feedback** - Long vibration pattern
+
+#### Settings Updates
+- **vibrationFeedbackEnabled** - New setting added through all layers
+- **Quick Controls section** - Reorganized with:
+  - Volume Button Control toggle
+  - Power Button Control toggle
+  - Vibration Feedback toggle
+  - Screen-Off Control (opens Accessibility Settings)
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| VibrationUtil.kt | Vibration patterns for recording feedback |
+| VolumeKeyAccessibilityService.kt | Accessibility service for screen-off volume control |
+| accessibility_service_config.xml | Service configuration |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| VideoSettings.kt | + vibrationFeedbackEnabled property |
+| SettingsDataStore.kt | + VIBRATION_FEEDBACK_ENABLED key |
+| SettingsRepository.kt | + setVibrationFeedbackEnabled() |
+| SettingsRepositoryImpl.kt | + implementation |
+| UpdateSettingsUseCase.kt | + setVibrationFeedbackEnabled() |
+| SettingsViewModel.kt | + setVibrationFeedbackEnabled() |
+| SettingsScreen.kt | + Quick Controls section UI |
+| VideoRecordingService.kt | + ACTION_TOGGLE_RECORDING_WITH_VIBRATION |
+| MainActivity.kt | + Double-press volume detection |
+| AndroidManifest.xml | + VIBRATE permission, + AccessibilityService |
+| strings.xml | + Accessibility service strings |
+
+### Version
+- **versionCode:** 4
+- **versionName:** 1.3
+
+---
+
+## Version 2.0 - Web Server (IP Camera) Feature ✅
+
+### New Features
+
+#### 📡 Web Server / IP Camera Mode
+Turn your phone into a network camera that can be controlled from any web browser!
+
+#### CameraWebServer
+- **Embedded HTTP Server** - NanoHTTPD-based web server
+- **MJPEG Streaming** - Live camera preview at `/stream.mjpg`
+- **Snapshot** - Capture single frame at `/snapshot.jpg`
+- **REST API** - Full control at `/api/*` endpoints
+
+#### REST API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/status` | GET | Get recording status |
+| `/api/settings` | GET | Get current settings |
+| `/api/settings` | POST | Update settings (JSON) |
+| `/api/record/start` | POST | Start recording |
+| `/api/record/stop` | POST | Stop recording |
+| `/api/record/pause` | POST | Pause recording |
+| `/api/record/resume` | POST | Resume recording |
+| `/api/camera/switch` | POST | Switch front/back camera |
+| `/api/flash/toggle` | POST | Toggle flash |
+
+#### Web Interface
+- **Modern UI** - Beautiful dark theme responsive design
+- **Live Preview** - MJPEG stream with smooth playback
+- **Recording Controls** - Start, Stop, Pause, Resume buttons
+- **Quick Actions** - Switch camera, Toggle flash, Take snapshot
+- **Settings Panel** - Camera selection, Resolution picker
+- **Status Indicator** - Real-time recording status
+- **Mobile Responsive** - Works on any device/screen size
+
+#### WiFi Hotspot Manager
+- **WifiHotspotManager.kt** - Utility class for network info
+- **IP Address Detection** - Auto-detect local IP
+- **Hotspot Setup Instructions** - Guide for manual setup
+- **Open System Settings** - Quick access to WiFi/Hotspot settings
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| WebServerService.kt | Foreground service with embedded web server |
+| WifiHotspotManager.kt | WiFi/Hotspot utilities and network info |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| VideoSettings.kt | + webServerEnabled, webServerPort, webServerPassword |
+| SettingsDataStore.kt | + WEB_SERVER_* keys and methods |
+| SettingsRepository.kt | + setWebServer* methods |
+| SettingsRepositoryImpl.kt | + implementation |
+| UpdateSettingsUseCase.kt | + setWebServer* methods |
+| SettingsViewModel.kt | + setWebServer* methods |
+| SettingsScreen.kt | + Web Server section UI |
+| AndroidManifest.xml | + INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE permissions, + WebServerService |
+| build.gradle.kts | + NanoHTTPD 2.3.1, + NanoHTTPD-websocket 2.3.1 |
+
+### Web Interface Features
+```
+📹 HiddenCam Web Interface
+├── 📺 Live Preview (MJPEG stream)
+├── 🔴 Recording Indicator
+├── ⏺ Start/Stop/Pause/Resume Controls
+├── 🔄 Switch Camera Button
+├── 💡 Flash Toggle Button  
+├── 📷 Snapshot Button
+├── ⚙️ Settings Panel
+│   ├── Camera Selection (Front/Back)
+│   └── Resolution Selection
+└── 📋 Server Info Footer
+```
+
+### How to Use
+1. **Enable Web Server** in Settings → Web Server section
+2. **Connect devices to same WiFi** or enable Mobile Hotspot on phone
+3. **Open browser** on another device
+4. **Navigate to server address** (shown in app, e.g., http://192.168.1.100:8080)
+5. **Control camera** from web interface!
+
+### Network Permissions
+| Permission | Purpose |
+|------------|---------|
+| INTERNET | Allow HTTP server to accept connections |
+| ACCESS_NETWORK_STATE | Check network connectivity |
+| ACCESS_WIFI_STATE | Get WiFi information |
+| CHANGE_WIFI_STATE | Future: programmatic hotspot control |
+
+### Version
+- **versionCode:** 5
+- **versionName:** 2.0
+
+---

@@ -53,6 +53,12 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.Web
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -368,6 +374,17 @@ fun SettingsScreen(
                 // Screen-off control requires accessibility service
                 ScreenOffControlItem(context = context)
             }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Web Server (IP Camera) Section
+            SettingsSectionHeader(title = "📡 Web Server (IP Camera)")
+            
+            WebServerSettingsSection(
+                currentSettings = currentSettings,
+                viewModel = viewModel,
+                context = context
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
             
@@ -1308,4 +1325,274 @@ private fun isAccessibilityServiceEnabled(context: Context, serviceName: String)
     
     return enabledServices.contains(serviceName) ||
            enabledServices.contains("VolumeKeyAccessibilityService")
+}
+
+/**
+ * Web Server Settings Section
+ */
+@Composable
+fun WebServerSettingsSection(
+    currentSettings: VideoSettings,
+    viewModel: SettingsViewModel,
+    context: Context
+) {
+    var showPortDialog by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var portInput by remember { mutableStateOf(currentSettings.webServerPort.toString()) }
+    var passwordInput by remember { mutableStateOf(currentSettings.webServerPassword) }
+    
+    val isServerRunning = com.example.hiddencam.data.service.WebServerService.isServerRunning
+    val serverAddress = com.example.hiddencam.data.service.WebServerService.serverAddress
+    
+    SettingsCard {
+        // Web Server Toggle
+        SwitchSettingItem(
+            icon = Icons.Default.WifiTethering,
+            title = "Enable Web Server",
+            description = if (isServerRunning) "Server running at $serverAddress" else "Turn your phone into an IP camera",
+            isChecked = currentSettings.webServerEnabled,
+            onCheckedChange = { enabled ->
+                viewModel.setWebServerEnabled(enabled)
+                
+                if (enabled) {
+                    // Start web server service
+                    val intent = com.example.hiddencam.data.service.WebServerService.getIntent(
+                        context,
+                        com.example.hiddencam.data.service.WebServerService.ACTION_START_SERVER,
+                        currentSettings.webServerPort
+                    )
+                    ContextCompat.startForegroundService(context, intent)
+                    Toast.makeText(context, "Starting web server...", Toast.LENGTH_SHORT).show()
+                } else {
+                    // Stop web server service
+                    val intent = com.example.hiddencam.data.service.WebServerService.getIntent(
+                        context,
+                        com.example.hiddencam.data.service.WebServerService.ACTION_STOP_SERVER
+                    )
+                    context.startService(intent)
+                    Toast.makeText(context, "Web server stopped", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+        
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        
+        // Server Port
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showPortDialog = true }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Public,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 16.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Server Port",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Port: ${currentSettings.webServerPort}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+        }
+        
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        
+        // Server Password
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showPasswordDialog = true }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Password,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 16.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Server Password",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = currentSettings.webServerPassword,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+        }
+        
+        if (isServerRunning) {
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            
+            // Server Address Display
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        // Copy address to clipboard
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Server Address", serverAddress)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Address copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Link,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Server Address",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = serverAddress,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+        }
+        
+        // Instructions
+        Text(
+            text = "💡 How to use:\n" +
+                   "1. Enable web server above\n" +
+                   "2. Connect to the same WiFi network or enable Mobile Hotspot\n" +
+                   "3. On another device, open browser and go to the server address\n" +
+                   "4. Control camera, record, and preview in real-time!",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        
+        // Open Hotspot Settings button
+        OutlinedButton(
+            onClick = {
+                com.example.hiddencam.util.WifiHotspotManager.openHotspotSettings(context)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Wifi,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text("Open WiFi/Hotspot Settings")
+        }
+    }
+    
+    // Port Dialog
+    if (showPortDialog) {
+        AlertDialog(
+            onDismissRequest = { showPortDialog = false },
+            title = { Text("Server Port") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter the port number for the web server (1024-65535):",
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    OutlinedTextField(
+                        value = portInput,
+                        onValueChange = { 
+                            if (it.all { char -> char.isDigit() } && it.length <= 5) {
+                                portInput = it
+                            }
+                        },
+                        label = { Text("Port") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val port = portInput.toIntOrNull()
+                        if (port != null && port in 1024..65535) {
+                            viewModel.setWebServerPort(port)
+                            showPortDialog = false
+                        } else {
+                            Toast.makeText(context, "Invalid port. Use 1024-65535", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPortDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Password Dialog
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            title = { Text("Server Password") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter password for web interface:",
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (passwordInput.length >= 4) {
+                            viewModel.setWebServerPassword(passwordInput)
+                            showPasswordDialog = false
+                        } else {
+                            Toast.makeText(context, "Password must be at least 4 characters", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }

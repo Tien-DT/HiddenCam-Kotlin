@@ -125,4 +125,21 @@ interface SettingsRepository {
      * Update minimum free GB for loop recording
      */
     suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int)
+
+    // Web Server settings
+
+    /**
+     * Enable/disable web server
+     */
+    suspend fun setWebServerEnabled(enabled: Boolean)
+
+    /**
+     * Update web server port
+     */
+    suspend fun setWebServerPort(port: Int)
+
+    /**
+     * Update web server password
+     */
+    suspend fun setWebServerPassword(password: String)
 }

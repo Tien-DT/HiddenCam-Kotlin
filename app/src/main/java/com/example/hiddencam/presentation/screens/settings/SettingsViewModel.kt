@@ -196,4 +196,24 @@ class SettingsViewModel @Inject constructor(
             updateSettingsUseCase.setLoopRecordingMinFreeGB(minFreeGB)
         }
     }
+
+    // Web Server settings
+
+    fun setWebServerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setWebServerEnabled(enabled)
+        }
+    }
+
+    fun setWebServerPort(port: Int) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setWebServerPort(port)
+        }
+    }
+
+    fun setWebServerPassword(password: String) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setWebServerPassword(password)
+        }
+    }
 }

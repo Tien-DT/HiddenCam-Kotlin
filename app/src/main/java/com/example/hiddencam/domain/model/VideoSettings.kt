@@ -25,7 +25,11 @@ data class VideoSettings(
     // New features
     val encryptVideo: Boolean = false, // Encrypt video with app lock PIN
     val recordingMode: RecordingMode = RecordingMode.MANUAL, // Recording mode
-    val loopRecordingMinFreeGB: Int = 2 // Min free storage before deleting old videos (GB)
+    val loopRecordingMinFreeGB: Int = 2, // Min free storage before deleting old videos (GB)
+    // Web Server (IP Camera) settings
+    val webServerEnabled: Boolean = false,
+    val webServerPort: Int = 8080,
+    val webServerPassword: String = "hiddencam123" // Password for web interface auth (optional)
 )
 
 enum class CameraFacing(val displayName: String) {
