@@ -9,6 +9,10 @@ import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.ShutterSpeedMode
+import com.example.hiddencam.domain.model.ShutterSpeedValues
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
@@ -125,5 +129,52 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             updateSettingsUseCase.setAppName(appName)
         }
+    }
+    
+    // Advanced camera settings
+    
+    fun setIsoMode(isoMode: IsoMode) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setIsoMode(isoMode)
+        }
+    }
+    
+    fun setExposureCompensation(ev: Int) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setExposureCompensation(ev)
+        }
+    }
+    
+    fun setShutterSpeedMode(mode: ShutterSpeedMode) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setShutterSpeedMode(mode)
+            // If switching to AUTO, reset custom shutter speed
+            if (mode == ShutterSpeedMode.AUTO) {
+                updateSettingsUseCase.setCustomShutterSpeed(0L)
+            }
+        }
+    }
+    
+    fun setCustomShutterSpeed(speedNs: Long) {
+        viewModelScope.launch {
+            val currentFrameRate = settings.value.frameRate
+            // Validate shutter speed against frame rate
+            if (ShutterSpeedValues.isValidShutterSpeed(speedNs, currentFrameRate)) {
+                updateSettingsUseCase.setCustomShutterSpeed(speedNs)
+            }
+        }
+    }
+    
+    fun setFocusMode(focusMode: FocusMode) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setFocusMode(focusMode)
+        }
+    }
+    
+    /**
+     * Get available shutter speeds based on current frame rate
+     */
+    fun getAvailableShutterSpeeds(): List<Pair<Long, String>> {
+        return ShutterSpeedValues.getAvailableSpeeds(settings.value.frameRate)
     }
 }

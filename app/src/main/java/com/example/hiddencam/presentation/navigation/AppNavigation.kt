@@ -7,11 +7,13 @@ import androidx.navigation.compose.rememberNavController
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.presentation.screens.home.HomeScreen
+import com.example.hiddencam.presentation.screens.preview.CameraPreviewScreen
 import com.example.hiddencam.presentation.screens.settings.SettingsScreen
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Settings : Screen("settings")
+    object CameraPreview : Screen("camera_preview")
 }
 
 @Composable
@@ -33,13 +35,20 @@ fun AppNavigation(
                 settings = settings,
                 allPermissionsGranted = allPermissionsGranted,
                 onRequestPermissions = onRequestPermissions,
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToPreview = { navController.navigate(Screen.CameraPreview.route) }
             )
         }
         
         composable(Screen.Settings.route) {
             SettingsScreen(
                 settings = settings,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        
+        composable(Screen.CameraPreview.route) {
+            CameraPreviewScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

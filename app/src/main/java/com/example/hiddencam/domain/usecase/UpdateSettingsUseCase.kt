@@ -4,6 +4,9 @@ import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
@@ -58,5 +61,27 @@ class UpdateSettingsUseCase @Inject constructor(
     
     suspend fun setAppName(appName: AppName) {
         settingsRepository.setAppName(appName)
+    }
+    
+    // Advanced camera settings
+    
+    suspend fun setIsoMode(isoMode: IsoMode) {
+        settingsRepository.setIsoMode(isoMode)
+    }
+    
+    suspend fun setExposureCompensation(ev: Int) {
+        settingsRepository.setExposureCompensation(ev)
+    }
+    
+    suspend fun setShutterSpeedMode(mode: ShutterSpeedMode) {
+        settingsRepository.setShutterSpeedMode(mode)
+    }
+    
+    suspend fun setCustomShutterSpeed(speedNs: Long) {
+        settingsRepository.setCustomShutterSpeed(speedNs)
+    }
+    
+    suspend fun setFocusMode(focusMode: FocusMode) {
+        settingsRepository.setFocusMode(focusMode)
     }
 }

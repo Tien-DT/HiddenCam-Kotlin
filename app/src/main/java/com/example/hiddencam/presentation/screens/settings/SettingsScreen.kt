@@ -19,10 +19,14 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CameraFront
 import androidx.compose.material.icons.filled.CameraRear
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Exposure
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Iso
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.ShutterSpeed
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Card
@@ -60,6 +64,10 @@ import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.ShutterSpeedMode
+import com.example.hiddencam.domain.model.ShutterSpeedValues
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
@@ -269,6 +277,98 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            // Advanced Camera Settings Section
+            SettingsSectionHeader(title = "Advanced Camera Settings")
+            
+            SettingsCard {
+                // ISO Mode
+                DropdownSettingItem(
+                    icon = Icons.Default.Iso,
+                    title = "ISO",
+                    currentValue = currentSettings.isoMode.displayName,
+                    options = IsoMode.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        IsoMode.entries.find { it.displayName == selected }?.let {
+                            viewModel.setIsoMode(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Exposure Compensation
+                ExposureCompensationItem(
+                    currentValue = currentSettings.exposureCompensation,
+                    onValueChange = { viewModel.setExposureCompensation(it) }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Shutter Speed Mode
+                DropdownSettingItem(
+                    icon = Icons.Default.ShutterSpeed,
+                    title = "Shutter Speed",
+                    currentValue = currentSettings.shutterSpeedMode.displayName,
+                    options = ShutterSpeedMode.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        ShutterSpeedMode.entries.find { it.displayName == selected }?.let {
+                            viewModel.setShutterSpeedMode(it)
+                        }
+                    }
+                )
+                
+                // Custom Shutter Speed (only shown when mode is CUSTOM)
+                if (currentSettings.shutterSpeedMode == ShutterSpeedMode.CUSTOM) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val availableSpeeds = viewModel.getAvailableShutterSpeeds()
+                    val currentSpeedDisplay = ShutterSpeedValues.getDisplayName(currentSettings.customShutterSpeed)
+                    
+                    DropdownSettingItem(
+                        icon = Icons.Default.ShutterSpeed,
+                        title = "Custom Speed",
+                        currentValue = currentSpeedDisplay,
+                        options = availableSpeeds.map { it.second },
+                        onOptionSelected = { selected ->
+                            availableSpeeds.find { it.second == selected }?.let { (speedNs, _) ->
+                                viewModel.setCustomShutterSpeed(speedNs)
+                            }
+                        }
+                    )
+                    
+                    Text(
+                        text = "⚠️ Minimum shutter speed for ${currentSettings.frameRate}fps: 1/${currentSettings.frameRate}s",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 4.dp, start = 40.dp)
+                    )
+                }
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Focus Mode
+                DropdownSettingItem(
+                    icon = Icons.Default.CenterFocusStrong,
+                    title = "Focus Mode",
+                    currentValue = currentSettings.focusMode.displayName,
+                    options = FocusMode.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        FocusMode.entries.find { it.displayName == selected }?.let {
+                            viewModel.setFocusMode(it)
+                        }
+                    }
+                )
+                
+                Text(
+                    text = "💡 Tip: Use 'Continuous Video' for general recording, 'Face Detection' for vlogs, or 'Infinity' for landscapes.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             // Info Card
             InfoCard()
         }
@@ -457,6 +557,122 @@ private fun SwitchSettingItem(
             checked = isChecked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@Composable
+private fun ExposureCompensationItem(
+    currentValue: Int,
+    onValueChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Exposure,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Exposure Compensation",
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp
+            )
+            Text(
+                text = "Adjust brightness: ${if (currentValue >= 0) "+$currentValue" else currentValue} EV",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Minus button
+                Card(
+                    modifier = Modifier.clickable { 
+                        if (currentValue > -4) onValueChange(currentValue - 1)
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (currentValue > -4) 
+                            MaterialTheme.colorScheme.primaryContainer
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text(
+                        text = "−",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // Exposure value indicators
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    (-4..4).forEach { value ->
+                        val isSelected = value == currentValue
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 1.dp)
+                                .clickable { onValueChange(value) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = when {
+                                    isSelected -> MaterialTheme.colorScheme.primary
+                                    value == 0 -> MaterialTheme.colorScheme.surfaceVariant
+                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                }
+                            )
+                        ) {
+                            Text(
+                                text = if (value == 0) "0" else "",
+                                modifier = Modifier.padding(vertical = 6.dp),
+                                fontSize = 10.sp,
+                                color = if (isSelected) 
+                                    MaterialTheme.colorScheme.onPrimary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // Plus button
+                Card(
+                    modifier = Modifier.clickable { 
+                        if (currentValue < 4) onValueChange(currentValue + 1)
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (currentValue < 4) 
+                            MaterialTheme.colorScheme.primaryContainer
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text(
+                        text = "+",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
     }
 }
 

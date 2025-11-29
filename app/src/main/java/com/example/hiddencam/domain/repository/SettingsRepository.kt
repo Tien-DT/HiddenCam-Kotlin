@@ -4,6 +4,9 @@ import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
@@ -79,4 +82,31 @@ interface SettingsRepository {
      * Update app name
      */
     suspend fun setAppName(appName: AppName)
+    
+    // Advanced camera settings
+    
+    /**
+     * Update ISO mode (Auto or specific ISO value)
+     */
+    suspend fun setIsoMode(isoMode: IsoMode)
+    
+    /**
+     * Update exposure compensation (EV value)
+     */
+    suspend fun setExposureCompensation(ev: Int)
+    
+    /**
+     * Update shutter speed mode (Auto or Custom)
+     */
+    suspend fun setShutterSpeedMode(mode: ShutterSpeedMode)
+    
+    /**
+     * Update custom shutter speed in nanoseconds
+     */
+    suspend fun setCustomShutterSpeed(speedNs: Long)
+    
+    /**
+     * Update focus mode
+     */
+    suspend fun setFocusMode(focusMode: FocusMode)
 }

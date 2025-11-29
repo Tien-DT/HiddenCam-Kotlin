@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CaptureRequest
 import android.media.MediaRecorder
 import android.os.Binder
 import android.os.Build
@@ -16,7 +18,12 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Range
 import android.view.Surface
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -37,7 +44,10 @@ import com.example.hiddencam.R
 import com.example.hiddencam.data.repository.VideoRecordingRepositoryImpl
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
 import com.example.hiddencam.domain.model.RecordingState
+import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
@@ -317,6 +327,9 @@ class VideoRecordingService : LifecycleService() {
                 Log.d(TAG, "Flash enabled")
             }
             
+            // Apply advanced camera settings using Camera2 interop
+            applyAdvancedCameraSettings(settings)
+            
             startVideoCapture(settings)
             
         } catch (e: Exception) {
@@ -324,6 +337,137 @@ class VideoRecordingService : LifecycleService() {
             videoRecordingRepository.updateRecordingState(
                 RecordingState.Error("Failed to bind camera: ${e.message}")
             )
+        }
+    }
+    
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun applyAdvancedCameraSettings(settings: VideoSettings) {
+        val camera = camera ?: return
+        
+        try {
+            val camera2CameraControl = Camera2CameraControl.from(camera.cameraControl)
+            val camera2CameraInfo = Camera2CameraInfo.from(camera.cameraInfo)
+            
+            val captureRequestOptionsBuilder = CaptureRequestOptions.Builder()
+            
+            // Apply ISO setting
+            if (settings.isoMode != IsoMode.AUTO) {
+                val isoValue = settings.isoMode.isoValue
+                if (isoValue != null) {
+                    // Get supported ISO range
+                    val isoRange = camera2CameraInfo.getCameraCharacteristic(
+                        CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE
+                    )
+                    if (isoRange != null) {
+                        val clampedIso = isoValue.coerceIn(isoRange.lower, isoRange.upper)
+                        captureRequestOptionsBuilder.setCaptureRequestOption(
+                            CaptureRequest.SENSOR_SENSITIVITY,
+                            clampedIso
+                        )
+                        // Disable auto exposure to allow manual ISO
+                        captureRequestOptionsBuilder.setCaptureRequestOption(
+                            CaptureRequest.CONTROL_AE_MODE,
+                            CaptureRequest.CONTROL_AE_MODE_OFF
+                        )
+                        Log.d(TAG, "Applied ISO: $clampedIso (range: ${isoRange.lower}-${isoRange.upper})")
+                    }
+                }
+            }
+            
+            // Apply exposure compensation
+            if (settings.exposureCompensation != 0) {
+                val evRange = camera2CameraInfo.getCameraCharacteristic(
+                    CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE
+                )
+                if (evRange != null) {
+                    val clampedEv = settings.exposureCompensation.coerceIn(evRange.lower, evRange.upper)
+                    captureRequestOptionsBuilder.setCaptureRequestOption(
+                        CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                        clampedEv
+                    )
+                    Log.d(TAG, "Applied exposure compensation: $clampedEv EV")
+                }
+            }
+            
+            // Apply shutter speed (exposure time)
+            if (settings.shutterSpeedMode == ShutterSpeedMode.CUSTOM && settings.customShutterSpeed > 0) {
+                val exposureTimeRange = camera2CameraInfo.getCameraCharacteristic(
+                    CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE
+                )
+                if (exposureTimeRange != null) {
+                    val clampedExposureTime = settings.customShutterSpeed.coerceIn(
+                        exposureTimeRange.lower,
+                        exposureTimeRange.upper
+                    )
+                    captureRequestOptionsBuilder.setCaptureRequestOption(
+                        CaptureRequest.SENSOR_EXPOSURE_TIME,
+                        clampedExposureTime
+                    )
+                    // Disable auto exposure to allow manual shutter speed
+                    captureRequestOptionsBuilder.setCaptureRequestOption(
+                        CaptureRequest.CONTROL_AE_MODE,
+                        CaptureRequest.CONTROL_AE_MODE_OFF
+                    )
+                    Log.d(TAG, "Applied shutter speed: ${clampedExposureTime}ns (1/${1_000_000_000L / clampedExposureTime}s)")
+                }
+            }
+            
+            // Apply focus mode
+            val afMode = when (settings.focusMode) {
+                FocusMode.CONTINUOUS_VIDEO -> CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                FocusMode.CONTINUOUS_PICTURE -> CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                FocusMode.AUTO -> CaptureRequest.CONTROL_AF_MODE_AUTO
+                FocusMode.MACRO -> CaptureRequest.CONTROL_AF_MODE_MACRO
+                FocusMode.INFINITY -> CaptureRequest.CONTROL_AF_MODE_OFF // Infinity focus uses OFF mode
+                FocusMode.FACE_DETECTION -> CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO // Face detection uses continuous mode
+            }
+            
+            // Check if the AF mode is supported
+            val availableAfModes = camera2CameraInfo.getCameraCharacteristic(
+                CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES
+            )
+            if (availableAfModes != null && availableAfModes.contains(afMode)) {
+                captureRequestOptionsBuilder.setCaptureRequestOption(
+                    CaptureRequest.CONTROL_AF_MODE,
+                    afMode
+                )
+                Log.d(TAG, "Applied focus mode: $afMode")
+                
+                // For infinity focus, set focus distance to infinity
+                if (settings.focusMode == FocusMode.INFINITY) {
+                    captureRequestOptionsBuilder.setCaptureRequestOption(
+                        CaptureRequest.LENS_FOCUS_DISTANCE,
+                        0.0f // 0 = infinity
+                    )
+                }
+            } else {
+                Log.w(TAG, "Focus mode $afMode not supported, using default")
+            }
+            
+            // Enable face detection if requested
+            if (settings.focusMode == FocusMode.FACE_DETECTION) {
+                val availableFaceDetectModes = camera2CameraInfo.getCameraCharacteristic(
+                    CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES
+                )
+                if (availableFaceDetectModes != null && availableFaceDetectModes.isNotEmpty()) {
+                    // Use the highest available face detection mode
+                    val maxFaceDetectMode = availableFaceDetectModes.maxOrNull() ?: 0
+                    if (maxFaceDetectMode > 0) {
+                        captureRequestOptionsBuilder.setCaptureRequestOption(
+                            CaptureRequest.STATISTICS_FACE_DETECT_MODE,
+                            maxFaceDetectMode
+                        )
+                        Log.d(TAG, "Enabled face detection mode: $maxFaceDetectMode")
+                    }
+                }
+            }
+            
+            // Apply all capture request options
+            camera2CameraControl.setCaptureRequestOptions(captureRequestOptionsBuilder.build())
+            Log.d(TAG, "Advanced camera settings applied successfully")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying advanced camera settings", e)
         }
     }
     

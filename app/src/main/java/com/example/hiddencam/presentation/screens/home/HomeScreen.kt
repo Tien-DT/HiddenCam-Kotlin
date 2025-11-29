@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Preview
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
@@ -73,6 +74,7 @@ fun HomeScreen(
     allPermissionsGranted: Boolean,
     onRequestPermissions: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToPreview: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -88,6 +90,14 @@ fun HomeScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
                 actions = {
+                    // Preview button
+                    IconButton(onClick = onNavigateToPreview) {
+                        Icon(
+                            imageVector = Icons.Default.Preview,
+                            contentDescription = "Camera Preview"
+                        )
+                    }
+                    // Settings button
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,

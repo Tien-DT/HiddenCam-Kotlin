@@ -12,10 +12,14 @@ import com.example.hiddencam.domain.model.AppIcon
 import com.example.hiddencam.domain.model.AppName
 import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.FocusMode
+import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
 import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
+import androidx.datastore.preferences.core.longPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -41,6 +45,12 @@ class SettingsDataStore @Inject constructor(
         val FLASH_ENABLED = booleanPreferencesKey("flash_enabled")
         val APP_ICON = stringPreferencesKey("app_icon")
         val APP_NAME = stringPreferencesKey("app_name")
+        // Advanced camera settings
+        val ISO_MODE = stringPreferencesKey("iso_mode")
+        val EXPOSURE_COMPENSATION = intPreferencesKey("exposure_compensation")
+        val SHUTTER_SPEED_MODE = stringPreferencesKey("shutter_speed_mode")
+        val CUSTOM_SHUTTER_SPEED = longPreferencesKey("custom_shutter_speed")
+        val FOCUS_MODE = stringPreferencesKey("focus_mode")
     }
     
     val settingsFlow: Flow<VideoSettings> = context.dataStore.data.map { preferences ->
@@ -69,7 +79,19 @@ class SettingsDataStore @Inject constructor(
             } ?: AppIcon.DEFAULT,
             appName = preferences[PreferencesKeys.APP_NAME]?.let {
                 try { AppName.valueOf(it) } catch (e: Exception) { AppName.HIDDEN_CAM }
-            } ?: AppName.HIDDEN_CAM
+            } ?: AppName.HIDDEN_CAM,
+            // Advanced camera settings
+            isoMode = preferences[PreferencesKeys.ISO_MODE]?.let {
+                try { IsoMode.valueOf(it) } catch (e: Exception) { IsoMode.AUTO }
+            } ?: IsoMode.AUTO,
+            exposureCompensation = preferences[PreferencesKeys.EXPOSURE_COMPENSATION] ?: 0,
+            shutterSpeedMode = preferences[PreferencesKeys.SHUTTER_SPEED_MODE]?.let {
+                try { ShutterSpeedMode.valueOf(it) } catch (e: Exception) { ShutterSpeedMode.AUTO }
+            } ?: ShutterSpeedMode.AUTO,
+            customShutterSpeed = preferences[PreferencesKeys.CUSTOM_SHUTTER_SPEED] ?: 0L,
+            focusMode = preferences[PreferencesKeys.FOCUS_MODE]?.let {
+                try { FocusMode.valueOf(it) } catch (e: Exception) { FocusMode.CONTINUOUS_VIDEO }
+            } ?: FocusMode.CONTINUOUS_VIDEO
         )
     }
     
@@ -140,6 +162,37 @@ class SettingsDataStore @Inject constructor(
     suspend fun setAppName(appName: AppName) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_NAME] = appName.name
+        }
+    }
+    
+    // Advanced camera settings
+    suspend fun setIsoMode(isoMode: IsoMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ISO_MODE] = isoMode.name
+        }
+    }
+    
+    suspend fun setExposureCompensation(ev: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.EXPOSURE_COMPENSATION] = ev
+        }
+    }
+    
+    suspend fun setShutterSpeedMode(mode: ShutterSpeedMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SHUTTER_SPEED_MODE] = mode.name
+        }
+    }
+    
+    suspend fun setCustomShutterSpeed(speedNs: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CUSTOM_SHUTTER_SPEED] = speedNs
+        }
+    }
+    
+    suspend fun setFocusMode(focusMode: FocusMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FOCUS_MODE] = focusMode.name
         }
     }
 }
