@@ -282,6 +282,9 @@ class WebServerService : LifecycleService() {
                 val flashEnabled = settings.flashEnabled
                 camera?.cameraControl?.enableTorch(flashEnabled)
                 
+                // Start audio streaming along with video
+                startAudioStreaming()
+                
                 Log.d(TAG, "Camera bound for streaming")
             } catch (e: Exception) {
                 Log.e(TAG, "Error binding camera", e)
@@ -927,10 +930,13 @@ class WebServerService : LifecycleService() {
         
         <div class="preview-container">
             <img id="stream" src="/stream.mjpg" alt="Camera Stream">
-            <audio id="audio-stream" autoplay style="display:none;"></audio>
+            <audio id="audio-stream" src="/audio.wav" autoplay loop></audio>
             <div id="recording-indicator" class="recording-indicator hidden">
                 <span class="dot"></span> REC
             </div>
+            <button id="btn-mute" class="mute-btn" onclick="toggleMute()">
+                🔊
+            </button>
         </div>
         
         <div class="controls">
@@ -954,9 +960,6 @@ class WebServerService : LifecycleService() {
             </button>
             <button id="btn-flash" class="btn btn-secondary" onclick="toggleFlash()">
                 💡 Flash: OFF
-            </button>
-            <button id="btn-audio" class="btn btn-secondary" onclick="toggleAudio()">
-                🔊 Audio: OFF
             </button>
             <button class="btn btn-secondary" onclick="takeSnapshot()">
                 📷 Snapshot
@@ -1082,6 +1085,30 @@ header h1 {
     width: 100%;
     height: auto;
     display: block;
+}
+
+.mute-btn {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.mute-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: scale(1.1);
 }
 
 .recording-indicator {
@@ -1249,14 +1276,52 @@ footer {
 let isRecording = false;
 let isPaused = false;
 let flashEnabled = false;
-let audioEnabled = false;
+let isMuted = true; // Start muted due to browser autoplay policies
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     updateStatus();
     loadSettings();
+    initAudio();
     setInterval(updateStatus, 2000);
 });
+
+function initAudio() {
+    const audio = document.getElementById('audio-stream');
+    // Start muted due to browser autoplay policy
+    audio.muted = true;
+    audio.volume = 1.0;
+    
+    // Try to play (will work muted)
+    audio.play().catch(err => {
+        console.log('Audio autoplay blocked:', err);
+    });
+    
+    updateMuteButton();
+}
+
+function toggleMute() {
+    const audio = document.getElementById('audio-stream');
+    isMuted = !isMuted;
+    audio.muted = isMuted;
+    
+    // If unmuting, ensure audio is playing
+    if (!isMuted) {
+        audio.play().catch(err => {
+            console.log('Audio play failed:', err);
+            isMuted = true;
+            audio.muted = true;
+        });
+    }
+    
+    updateMuteButton();
+}
+
+function updateMuteButton() {
+    const btn = document.getElementById('btn-mute');
+    btn.textContent = isMuted ? '🔇' : '🔊';
+    btn.title = isMuted ? 'Click to unmute' : 'Click to mute';
+}
 
 async function updateStatus() {
     try {
@@ -1361,32 +1426,6 @@ async function toggleFlash() {
 function updateFlashButton() {
     document.getElementById('btn-flash').textContent = 
         flashEnabled ? '💡 Flash: ON' : '💡 Flash: OFF';
-}
-
-function toggleAudio() {
-    audioEnabled = !audioEnabled;
-    const audioElement = document.getElementById('audio-stream');
-    const audioButton = document.getElementById('btn-audio');
-    
-    if (audioEnabled) {
-        // Start audio stream
-        audioElement.src = '/audio.wav?' + Date.now();
-        audioElement.play().catch(err => {
-            console.log('Audio autoplay blocked, user interaction needed');
-            audioEnabled = false;
-            updateAudioButton();
-        });
-    } else {
-        // Stop audio stream
-        audioElement.pause();
-        audioElement.src = '';
-    }
-    updateAudioButton();
-}
-
-function updateAudioButton() {
-    document.getElementById('btn-audio').textContent = 
-        audioEnabled ? '🔊 Audio: ON' : '🔇 Audio: OFF';
 }
 
 async function updateCamera() {
