@@ -5,8 +5,10 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bluetooth
@@ -38,11 +41,17 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Iso
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Power
+import androidx.compose.material.icons.filled.ScreenLockPortrait
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ShutterSpeed
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -88,6 +97,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.ShutterSpeedValues
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -114,6 +124,7 @@ fun SettingsScreen(
     val appLockEnabled by securityDataStore.appLockEnabled.collectAsState(initial = false)
     val biometricEnabled by securityDataStore.biometricEnabled.collectAsState(initial = false)
     val lockTimeout by securityDataStore.lockTimeout.collectAsState(initial = 0)
+    val encryptVideo by securityDataStore.encryptVideo.collectAsState(initial = false)
     val bluetoothRemoteEnabled by securityDataStore.bluetoothRemoteEnabled.collectAsState(initial = false)
     val pairedDeviceName by securityDataStore.pairedDeviceName.collectAsState(initial = null)
     
@@ -255,6 +266,67 @@ fun SettingsScreen(
                         }
                     }
                 )
+                
+                Text(
+                    text = "💡 Bluetooth audio requires a paired Bluetooth headset. Mixed mode records from both phone mic and Bluetooth.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Recording Mode Section
+            SettingsSectionHeader(title = "Recording Mode")
+            
+            SettingsCard {
+                DropdownSettingItem(
+                    icon = Icons.Default.Loop,
+                    title = "Recording Mode",
+                    currentValue = currentSettings.recordingMode.displayName,
+                    options = RecordingMode.entries.map { it.displayName },
+                    onOptionSelected = { selected ->
+                        RecordingMode.entries.find { it.displayName == selected }?.let {
+                            viewModel.setRecordingMode(it)
+                        }
+                    }
+                )
+                
+                if (currentSettings.recordingMode == RecordingMode.LOOP) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Loop Recording Minimum Free Storage
+                    val minFreeGBOptions = listOf(1, 2, 5, 10)
+                    DropdownSettingItem(
+                        icon = Icons.Default.Storage,
+                        title = "Minimum Free Storage",
+                        currentValue = "${currentSettings.loopRecordingMinFreeGB} GB",
+                        options = minFreeGBOptions.map { "$it GB" },
+                        onOptionSelected = { selected ->
+                            val gb = selected.replace(" GB", "").toIntOrNull() ?: 2
+                            viewModel.setLoopRecordingMinFreeGB(gb)
+                        }
+                    )
+                    
+                    Text(
+                        text = "⚠️ Loop recording will automatically delete oldest recordings when storage falls below this threshold.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                
+                Text(
+                    text = when (currentSettings.recordingMode) {
+                        RecordingMode.MANUAL -> "📝 Manual: Recording stops only when you stop it."
+                        RecordingMode.UNTIL_FULL -> "💾 Until Full: Recording continues until storage is full, then stops."
+                        RecordingMode.LOOP -> "🔄 Loop: Oldest recordings are deleted automatically to free up space."
+                    },
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 12.dp)
+                )
             }
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -266,7 +338,7 @@ fun SettingsScreen(
                 SwitchSettingItem(
                     icon = Icons.AutoMirrored.Filled.VolumeDown,
                     title = "Volume Button Control",
-                    description = "Long press volume down to start recording",
+                    description = "Double press volume down to toggle recording",
                     isChecked = currentSettings.volumeButtonEnabled,
                     onCheckedChange = { viewModel.setVolumeButtonEnabled(it) }
                 )
@@ -280,6 +352,21 @@ fun SettingsScreen(
                     isChecked = currentSettings.powerButtonEnabled,
                     onCheckedChange = { viewModel.setPowerButtonEnabled(it) }
                 )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                SwitchSettingItem(
+                    icon = Icons.Default.Vibration,
+                    title = "Vibration Feedback",
+                    description = "Vibrate when recording starts/stops via quick controls",
+                    isChecked = currentSettings.vibrationFeedbackEnabled,
+                    onCheckedChange = { viewModel.setVibrationFeedbackEnabled(it) }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Screen-off control requires accessibility service
+                ScreenOffControlItem(context = context)
             }
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -513,6 +600,30 @@ fun SettingsScreen(
                             }
                         }
                     )
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // Video Encryption
+                    SwitchSettingItem(
+                        icon = Icons.Default.Security,
+                        title = "Encrypt Videos",
+                        description = "Encrypt recordings with your PIN",
+                        isChecked = encryptVideo,
+                        onCheckedChange = { enabled ->
+                            scope.launch {
+                                securityDataStore.setEncryptVideo(enabled)
+                            }
+                        }
+                    )
+                    
+                    if (encryptVideo) {
+                        Text(
+                            text = "🔐 Videos will be encrypted using your app lock PIN. You'll need to decrypt them in the Video Gallery to view.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(top = 8.dp, start = 40.dp)
+                        )
+                    }
                 }
             }
             
@@ -671,8 +782,11 @@ private fun CameraFacingSelector(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (currentFacing == CameraFacing.FRONT) 
-                Icons.Default.CameraFront else Icons.Default.CameraRear,
+            imageVector = when (currentFacing) {
+                CameraFacing.FRONT -> Icons.Default.CameraFront
+                CameraFacing.BACK -> Icons.Default.CameraRear
+                CameraFacing.USB -> Icons.Default.Usb
+            },
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary
         )
@@ -692,7 +806,7 @@ private fun CameraFacingSelector(
                 val isSelected = facing == currentFacing
                 Card(
                     modifier = Modifier
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 2.dp)
                         .clickable { onFacingSelected(facing) },
                     colors = CardDefaults.cardColors(
                         containerColor = if (isSelected) 
@@ -702,13 +816,17 @@ private fun CameraFacingSelector(
                     )
                 ) {
                     Text(
-                        text = facing.name,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        text = when (facing) {
+                            CameraFacing.FRONT -> "Front"
+                            CameraFacing.BACK -> "Back"
+                            CameraFacing.USB -> "USB"
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         color = if (isSelected)
                             MaterialTheme.colorScheme.onPrimaryContainer
                         else
                             MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -1064,4 +1182,130 @@ private fun BluetoothPairingDialog(
             }
         }
     )
+}
+
+/**
+ * Screen-off control item that links to Accessibility Settings.
+ * User needs to enable the accessibility service for volume button control when screen is off.
+ */
+@Composable
+private fun ScreenOffControlItem(context: Context) {
+    var showDialog by remember { mutableStateOf(false) }
+    
+    // Check if accessibility service is enabled
+    val isAccessibilityEnabled = remember {
+        isAccessibilityServiceEnabled(
+            context,
+            "com.example.hiddencam/.data.service.VolumeKeyAccessibilityService"
+        )
+    }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDialog = true }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.ScreenLockPortrait,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 16.dp)
+        )
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Screen-Off Control",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = if (isAccessibilityEnabled) {
+                    "✓ Enabled - Double press volume down when screen off"
+                } else {
+                    "Tap to enable in Accessibility Settings"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isAccessibilityEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                }
+            )
+        }
+        
+        Icon(
+            imageVector = Icons.Default.AccessibilityNew,
+            contentDescription = null,
+            tint = if (isAccessibilityEnabled) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+            }
+        )
+    }
+    
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Enable Screen-Off Control") },
+            text = {
+                Column {
+                    Text(
+                        text = "To use volume button control when the screen is off, you need to enable the HiddenCam Volume Control accessibility service.",
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    Text(
+                        text = "How to enable:",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        text = "1. Tap 'Open Settings' below\n" +
+                               "2. Find 'HiddenCam Volume Control'\n" +
+                               "3. Turn it ON\n" +
+                               "4. Confirm when prompted",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Text(
+                        text = "\n⚠️ This service only listens for volume button presses and does not access any other data.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDialog = false
+                        // Open accessibility settings
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Text("Open Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+/**
+ * Check if accessibility service is enabled
+ */
+private fun isAccessibilityServiceEnabled(context: Context, serviceName: String): Boolean {
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+    
+    return enabledServices.contains(serviceName) ||
+           enabledServices.contains("VolumeKeyAccessibilityService")
 }

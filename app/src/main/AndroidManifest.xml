@@ -39,6 +39,9 @@
     
     <!-- Biometric permission -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    
+    <!-- Vibration permission for quick control feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Camera feature -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -136,6 +139,21 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+        
+        <!-- Accessibility Service for volume button control when screen is off -->
+        <service
+            android:name=".data.service.VolumeKeyAccessibilityService"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/accessibility_service_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!-- Provider for saving videos -->
         <provider

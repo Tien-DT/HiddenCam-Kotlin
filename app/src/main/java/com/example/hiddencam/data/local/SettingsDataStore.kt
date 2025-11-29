@@ -14,6 +14,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
@@ -41,6 +42,7 @@ class SettingsDataStore @Inject constructor(
         val AUDIO_SOURCE = stringPreferencesKey("audio_source")
         val VOLUME_BUTTON_ENABLED = booleanPreferencesKey("volume_button_enabled")
         val POWER_BUTTON_ENABLED = booleanPreferencesKey("power_button_enabled")
+        val VIBRATION_FEEDBACK_ENABLED = booleanPreferencesKey("vibration_feedback_enabled")
         val ORIENTATION = stringPreferencesKey("orientation")
         val FLASH_ENABLED = booleanPreferencesKey("flash_enabled")
         val APP_ICON = stringPreferencesKey("app_icon")
@@ -51,6 +53,9 @@ class SettingsDataStore @Inject constructor(
         val SHUTTER_SPEED_MODE = stringPreferencesKey("shutter_speed_mode")
         val CUSTOM_SHUTTER_SPEED = longPreferencesKey("custom_shutter_speed")
         val FOCUS_MODE = stringPreferencesKey("focus_mode")
+        // Recording mode settings
+        val RECORDING_MODE = stringPreferencesKey("recording_mode")
+        val LOOP_RECORDING_MIN_FREE_GB = intPreferencesKey("loop_recording_min_free_gb")
     }
     
     val settingsFlow: Flow<VideoSettings> = context.dataStore.data.map { preferences ->
@@ -70,6 +75,7 @@ class SettingsDataStore @Inject constructor(
             } ?: AudioSource.MICROPHONE,
             volumeButtonEnabled = preferences[PreferencesKeys.VOLUME_BUTTON_ENABLED] ?: true,
             powerButtonEnabled = preferences[PreferencesKeys.POWER_BUTTON_ENABLED] ?: true,
+            vibrationFeedbackEnabled = preferences[PreferencesKeys.VIBRATION_FEEDBACK_ENABLED] ?: true,
             orientation = preferences[PreferencesKeys.ORIENTATION]?.let {
                 VideoOrientation.valueOf(it)
             } ?: VideoOrientation.PORTRAIT,
@@ -91,7 +97,12 @@ class SettingsDataStore @Inject constructor(
             customShutterSpeed = preferences[PreferencesKeys.CUSTOM_SHUTTER_SPEED] ?: 0L,
             focusMode = preferences[PreferencesKeys.FOCUS_MODE]?.let {
                 try { FocusMode.valueOf(it) } catch (e: Exception) { FocusMode.CONTINUOUS_VIDEO }
-            } ?: FocusMode.CONTINUOUS_VIDEO
+            } ?: FocusMode.CONTINUOUS_VIDEO,
+            // Recording mode
+            recordingMode = preferences[PreferencesKeys.RECORDING_MODE]?.let {
+                try { RecordingMode.valueOf(it) } catch (e: Exception) { RecordingMode.MANUAL }
+            } ?: RecordingMode.MANUAL,
+            loopRecordingMinFreeGB = preferences[PreferencesKeys.LOOP_RECORDING_MIN_FREE_GB] ?: 2
         )
     }
     
@@ -138,6 +149,12 @@ class SettingsDataStore @Inject constructor(
     suspend fun setPowerButtonEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.POWER_BUTTON_ENABLED] = enabled
+        }
+    }
+    
+    suspend fun setVibrationFeedbackEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VIBRATION_FEEDBACK_ENABLED] = enabled
         }
     }
     
@@ -193,6 +210,19 @@ class SettingsDataStore @Inject constructor(
     suspend fun setFocusMode(focusMode: FocusMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.FOCUS_MODE] = focusMode.name
+        }
+    }
+
+    // Recording mode settings
+    suspend fun setRecordingMode(recordingMode: RecordingMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.RECORDING_MODE] = recordingMode.name
+        }
+    }
+
+    suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LOOP_RECORDING_MIN_FREE_GB] = minFreeGB
         }
     }
 }

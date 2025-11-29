@@ -46,6 +46,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoOrientation
@@ -53,8 +54,15 @@ import com.example.hiddencam.domain.model.VideoResolution
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.presentation.MainActivity
 import com.example.hiddencam.presentation.widget.RecordingWidgetReceiver
+import com.example.hiddencam.util.StorageUtil
+import com.example.hiddencam.util.VideoEncryptionUtil
+import com.example.hiddencam.data.datastore.SecurityDataStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -63,6 +71,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.inject.Inject
+import com.example.hiddencam.util.VibrationUtil
 
 @AndroidEntryPoint
 class VideoRecordingService : LifecycleService() {
@@ -70,12 +79,14 @@ class VideoRecordingService : LifecycleService() {
     companion object {
         private const val TAG = "VideoRecordingService"
         private const val NOTIFICATION_ID = 1001
+        private const val STORAGE_CHECK_INTERVAL_MS = 30_000L // Check storage every 30 seconds
         
         const val ACTION_START_RECORDING = "action_start_recording"
         const val ACTION_PAUSE_RECORDING = "action_pause_recording"
         const val ACTION_RESUME_RECORDING = "action_resume_recording"
         const val ACTION_STOP_RECORDING = "action_stop_recording"
         const val ACTION_TOGGLE_RECORDING = "action_toggle_recording"
+        const val ACTION_TOGGLE_RECORDING_WITH_VIBRATION = "action_toggle_recording_with_vibration"
         
         fun getIntent(context: Context, action: String): Intent {
             return Intent(context, VideoRecordingService::class.java).apply {
@@ -87,6 +98,9 @@ class VideoRecordingService : LifecycleService() {
     @Inject
     lateinit var videoRecordingRepository: VideoRecordingRepositoryImpl
     
+    @Inject
+    lateinit var securityDataStore: SecurityDataStore
+    
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
     private var cameraExecutor: ExecutorService? = null
@@ -94,6 +108,8 @@ class VideoRecordingService : LifecycleService() {
     private var currentSettings: VideoSettings? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
+    private var currentOutputFile: File? = null
+    private var storageCheckJob: kotlinx.coroutines.Job? = null
     
     private val binder = LocalBinder()
     
@@ -132,27 +148,59 @@ class VideoRecordingService : LifecycleService() {
             ACTION_TOGGLE_RECORDING -> {
                 // Toggle recording state - used by Bluetooth remote
                 lifecycleScope.launch {
-                    val currentState = videoRecordingRepository.getCurrentState()
-                    when (currentState) {
-                        is RecordingState.Idle, is RecordingState.Error -> {
-                            val settings = videoRecordingRepository.getSettings()
-                            currentSettings = settings
-                            startForegroundService()
-                            startRecording(settings)
-                        }
-                        is RecordingState.Recording -> {
-                            pauseRecording()
-                        }
-                        is RecordingState.Paused -> {
-                            resumeRecording()
-                        }
-                        else -> { /* Do nothing */ }
-                    }
+                    handleToggleRecording(withVibration = false)
+                }
+            }
+            ACTION_TOGGLE_RECORDING_WITH_VIBRATION -> {
+                // Toggle recording with vibration feedback - used by accessibility service when screen off
+                lifecycleScope.launch {
+                    handleToggleRecording(withVibration = true)
                 }
             }
         }
         
         return START_STICKY
+    }
+    
+    /**
+     * Handle toggle recording with optional vibration feedback.
+     * @param withVibration If true, vibrate to indicate recording started/stopped (for screen-off control)
+     */
+    private suspend fun handleToggleRecording(withVibration: Boolean) {
+        val currentState = videoRecordingRepository.getCurrentState()
+        val settings = videoRecordingRepository.getSettings()
+        val shouldVibrate = withVibration && settings.vibrationFeedbackEnabled
+        
+        when (currentState) {
+            is RecordingState.Idle, is RecordingState.Error -> {
+                currentSettings = settings
+                startForegroundService()
+                startRecording(settings)
+                
+                // Vibrate twice to indicate recording started
+                if (shouldVibrate) {
+                    VibrationUtil.vibrateRecordingStarted(this@VideoRecordingService)
+                }
+            }
+            is RecordingState.Recording -> {
+                // Stop recording when already recording (instead of pause)
+                stopRecording()
+                
+                // Vibrate three times to indicate recording stopped
+                if (shouldVibrate) {
+                    VibrationUtil.vibrateRecordingStopped(this@VideoRecordingService)
+                }
+            }
+            is RecordingState.Paused -> {
+                resumeRecording()
+                
+                // Vibrate twice to indicate recording resumed
+                if (shouldVibrate) {
+                    VibrationUtil.vibrateRecordingStarted(this@VideoRecordingService)
+                }
+            }
+            else -> { /* Do nothing */ }
+        }
     }
     
     private fun setupRepositoryCallbacks() {
@@ -309,6 +357,34 @@ class VideoRecordingService : LifecycleService() {
             val cameraSelector = when (settings.cameraFacing) {
                 CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
                 CameraFacing.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
+                CameraFacing.USB -> {
+                    // Try to find USB/external camera
+                    // USB cameras on Android are typically exposed as additional cameras
+                    // We'll try to find one that's not front or back
+                    try {
+                        CameraSelector.Builder()
+                            .addCameraFilter { cameras ->
+                                cameras.filter { cameraInfo ->
+                                    // Filter to find external/USB cameras
+                                    // These typically have lens facing EXTERNAL or are not front/back
+                                    val camera2Info = Camera2CameraInfo.from(cameraInfo)
+                                    val lensFacing = camera2Info.getCameraCharacteristic(
+                                        CameraCharacteristics.LENS_FACING
+                                    )
+                                    lensFacing == CameraCharacteristics.LENS_FACING_EXTERNAL ||
+                                    (lensFacing != CameraCharacteristics.LENS_FACING_FRONT && 
+                                     lensFacing != CameraCharacteristics.LENS_FACING_BACK)
+                                }
+                            }
+                            .build()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "USB camera not found, falling back to back camera: ${e.message}")
+                        videoRecordingRepository.updateRecordingState(
+                            RecordingState.Error("USB camera not found. Please connect a USB camera via OTG.")
+                        )
+                        return
+                    }
+                }
             }
             
             // Get supported qualities for the selected camera
@@ -510,7 +586,25 @@ class VideoRecordingService : LifecycleService() {
     private fun startVideoCapture(settings: VideoSettings) {
         val videoCapture = videoCapture ?: return
         
+        // Check storage before starting based on recording mode
+        if (settings.recordingMode == RecordingMode.UNTIL_FULL) {
+            if (!StorageUtil.hasEnoughStorageForRecording()) {
+                videoRecordingRepository.updateRecordingState(
+                    RecordingState.Error("Not enough storage to start recording")
+                )
+                stopSelf()
+                return
+            }
+        } else if (settings.recordingMode == RecordingMode.LOOP) {
+            // For loop recording, try to free up space first if needed
+            if (StorageUtil.isStorageLow(settings.loopRecordingMinFreeGB)) {
+                val freed = StorageUtil.freeUpStorage(contentResolver, settings.loopRecordingMinFreeGB)
+                Log.d(TAG, "Freed ${StorageUtil.formatBytes(freed)} for loop recording")
+            }
+        }
+        
         val outputFile = createOutputFile()
+        currentOutputFile = outputFile
         val outputOptions = FileOutputOptions.Builder(outputFile).build()
         
         val pendingRecording = videoCapture.output
@@ -530,7 +624,44 @@ class VideoRecordingService : LifecycleService() {
             handleRecordEvent(recordEvent)
         }
         
+        // Start storage monitoring for loop/until_full modes
+        if (settings.recordingMode != RecordingMode.MANUAL) {
+            startStorageMonitoring(settings)
+        }
+        
         updateNotification("Recording in progress...")
+    }
+    
+    private fun startStorageMonitoring(settings: VideoSettings) {
+        storageCheckJob?.cancel()
+        storageCheckJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(STORAGE_CHECK_INTERVAL_MS)
+                
+                when (settings.recordingMode) {
+                    RecordingMode.UNTIL_FULL -> {
+                        if (!StorageUtil.hasEnoughStorageForRecording(50)) { // Stop at 50MB
+                            Log.d(TAG, "Storage full, stopping recording")
+                            launch(Dispatchers.Main) {
+                                stopRecording()
+                            }
+                        }
+                    }
+                    RecordingMode.LOOP -> {
+                        if (StorageUtil.isStorageLow(settings.loopRecordingMinFreeGB)) {
+                            val freed = StorageUtil.freeUpStorage(contentResolver, settings.loopRecordingMinFreeGB)
+                            Log.d(TAG, "Loop recording: Freed ${StorageUtil.formatBytes(freed)}")
+                            
+                            // If we still can't free enough space, stop recording
+                            if (StorageUtil.isStorageLow(settings.loopRecordingMinFreeGB)) {
+                                Log.w(TAG, "Cannot free enough space for loop recording")
+                            }
+                        }
+                    }
+                    else -> { /* Manual mode doesn't need monitoring */ }
+                }
+            }
+        }
     }
     
     private fun handleRecordEvent(event: VideoRecordEvent) {
@@ -557,6 +688,9 @@ class VideoRecordingService : LifecycleService() {
                 updateNotification("", "", isPaused = false)
             }
             is VideoRecordEvent.Finalize -> {
+                // Stop storage monitoring
+                storageCheckJob?.cancel()
+                
                 // Turn off flash
                 camera?.cameraControl?.enableTorch(false)
                 
@@ -570,8 +704,10 @@ class VideoRecordingService : LifecycleService() {
                     )
                 } else {
                     Log.d(TAG, "Recording saved: ${event.outputResults.outputUri}")
-                    // Add to media store
-                    addVideoToMediaStore(event.outputResults.outputUri.path ?: "")
+                    // Add to media store with optional encryption
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        addVideoToMediaStoreWithEncryption(event.outputResults.outputUri.path ?: "")
+                    }
                 }
                 videoRecordingRepository.updateRecordingState(RecordingState.Idle)
                 stopSelf()
@@ -607,6 +743,42 @@ class VideoRecordingService : LifecycleService() {
         return File(outputDir, fileName)
     }
     
+    private suspend fun addVideoToMediaStoreWithEncryption(filePath: String) {
+        val file = File(filePath)
+        if (!file.exists()) {
+            Log.e(TAG, "Video file not found: $filePath")
+            return
+        }
+        
+        // Check if encryption is enabled
+        val encryptVideo = securityDataStore.encryptVideo.first()
+        val encryptionPin = if (encryptVideo) securityDataStore.getEncryptionPin() else null
+        
+        if (encryptVideo && !encryptionPin.isNullOrEmpty()) {
+            // Encrypt the video
+            Log.d(TAG, "Encrypting video...")
+            val encryptedUri = VideoEncryptionUtil.encryptToMediaStore(
+                contentResolver,
+                file,
+                encryptionPin,
+                file.name
+            )
+            
+            if (encryptedUri != null) {
+                Log.d(TAG, "Video encrypted and saved: $encryptedUri")
+                // Delete the original unencrypted file
+                file.delete()
+            } else {
+                Log.e(TAG, "Failed to encrypt video, saving unencrypted")
+                // Fall back to saving unencrypted
+                addVideoToMediaStore(filePath)
+            }
+        } else {
+            // Save without encryption
+            addVideoToMediaStore(filePath)
+        }
+    }
+
     private fun addVideoToMediaStore(filePath: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val file = File(filePath)
@@ -631,6 +803,9 @@ class VideoRecordingService : LifecycleService() {
                 contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
                 resolver.update(it, contentValues, null, null)
             }
+            
+            // Delete the temp file after copying to MediaStore
+            file.delete()
         }
     }
     
@@ -648,6 +823,7 @@ class VideoRecordingService : LifecycleService() {
     
     override fun onDestroy() {
         super.onDestroy()
+        storageCheckJob?.cancel()
         activeRecording?.stop()
         cameraProvider?.unbindAll()
         cameraExecutor?.shutdown()

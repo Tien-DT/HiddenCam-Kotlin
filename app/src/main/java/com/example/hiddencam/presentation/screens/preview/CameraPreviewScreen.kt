@@ -227,6 +227,11 @@ private fun CameraPreviewView(
             val cameraSelector = when (cameraFacing) {
                 CameraFacing.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
                 CameraFacing.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
+                CameraFacing.USB -> {
+                    // USB cameras are not supported in preview mode
+                    // Use back camera as fallback
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
             }
             
             val preview = Preview.Builder()
@@ -353,7 +358,11 @@ private fun CameraControlsOverlay(
             shape = RoundedCornerShape(4.dp)
         ) {
             Text(
-                text = if (currentCameraFacing == CameraFacing.BACK) "📷 Back" else "🤳 Front",
+                text = when (currentCameraFacing) {
+                    CameraFacing.BACK -> "📷 Back"
+                    CameraFacing.FRONT -> "🤳 Front"
+                    CameraFacing.USB -> "🔌 USB"
+                },
                 color = Color.White,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

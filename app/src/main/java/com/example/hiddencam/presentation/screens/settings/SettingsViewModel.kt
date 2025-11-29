@@ -11,6 +11,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.ShutterSpeedValues
 import com.example.hiddencam.domain.model.VideoBitrate
@@ -80,6 +81,12 @@ class SettingsViewModel @Inject constructor(
     fun setPowerButtonEnabled(enabled: Boolean) {
         viewModelScope.launch {
             updateSettingsUseCase.setPowerButtonEnabled(enabled)
+        }
+    }
+    
+    fun setVibrationFeedbackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setVibrationFeedbackEnabled(enabled)
         }
     }
     
@@ -176,5 +183,17 @@ class SettingsViewModel @Inject constructor(
      */
     fun getAvailableShutterSpeeds(): List<Pair<Long, String>> {
         return ShutterSpeedValues.getAvailableSpeeds(settings.value.frameRate)
+    }
+
+    fun setRecordingMode(recordingMode: RecordingMode) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setRecordingMode(recordingMode)
+        }
+    }
+
+    fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setLoopRecordingMinFreeGB(minFreeGB)
+        }
     }
 }

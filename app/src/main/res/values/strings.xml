@@ -8,4 +8,8 @@
     <string name="widget_recording">Recording…</string>
     <string name="widget_tap_to_stop">Tap to Stop</string>
     <string name="widget_record_button">Record button</string>
+    
+    <!-- Accessibility Service -->
+    <string name="accessibility_service_description">Allows HiddenCam to detect volume button presses when the screen is off for quick recording control. Double press volume down to start/stop recording.</string>
+    <string name="accessibility_service_name">HiddenCam Volume Control</string>
 </resources>

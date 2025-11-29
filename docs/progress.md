@@ -530,6 +530,125 @@ accompanist-permissions = { group = "com.google.accompanist", name = "accompanis
 
 ## Last Updated
 - **Date:** 2025-01-XX
-- **Status:** Core functionality complete + App Disguise + Advanced Camera Settings + Camera Preview
-- **New Features:** ISO control, Exposure compensation, Shutter speed with validation, Focus modes, Camera preview screen
+- **Status:** Core functionality complete + App Disguise + Advanced Camera Settings + Camera Preview + v1.2 Features
+- **New Features:** Video encryption, USB Camera support, Loop recording, Bluetooth audio sources
 - **Next:** Test trên physical device, fix remaining issues
+
+---
+
+## Session 6: Advanced Recording Features (v1.2)
+
+### New Features
+
+#### 1. Video Encryption 🔐
+- **AES-GCM Encryption** - Videos encrypted with 256-bit AES
+- **PIN-Based Key Derivation** - Uses app lock PIN via SHA-256 to derive encryption key
+- **Automatic Encryption** - When enabled, videos are encrypted after recording
+- **Encrypted File Storage** - Saved to Movies/HiddenCam/Encrypted with .enc extension
+- **Gallery Decryption** - Ability to decrypt and play encrypted videos
+
+#### 2. USB Camera (OTG) Support 📹
+- **External Camera Detection** - Detects USB cameras connected via OTG
+- **Camera Selection** - Added USB option to camera selector (Front/Back/USB)
+- **Fallback Handling** - Shows error message if no USB camera found
+
+#### 3. Bluetooth Audio Sources 🎤
+- **Phone Microphone** - Default audio source
+- **Bluetooth Headset** - Record audio from connected Bluetooth headset
+- **Mixed Mode** - Record from both phone mic and Bluetooth simultaneously
+
+#### 4. Recording Modes 🔄
+- **Manual Mode** - Recording stops only when user stops it
+- **Until Storage Full** - Recording continues until storage is nearly full (~50MB remaining)
+- **Loop Recording** - Automatically deletes oldest recordings when storage is low
+  - Configurable minimum free GB (1, 2, 5, 10 GB options)
+  - Automatic cleanup during recording
+
+### Technical Implementation
+
+#### New Files Created
+| File | Purpose |
+|------|---------|
+| `util/VideoEncryptionUtil.kt` | AES-GCM encryption/decryption for videos |
+| `util/StorageUtil.kt` | Storage monitoring and management for loop recording |
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `domain/model/VideoSettings.kt` | + RecordingMode enum, USB in CameraFacing, BLUETOOTH/MIXED in AudioSource |
+| `data/datastore/SecurityDataStore.kt` | + encryptVideo Flow, setEncryptVideo(), getEncryptionPin(), APP_LOCK_PIN key |
+| `data/local/SettingsDataStore.kt` | + RECORDING_MODE, LOOP_RECORDING_MIN_FREE_GB keys |
+| `domain/repository/SettingsRepository.kt` | + setRecordingMode(), setLoopRecordingMinFreeGB() |
+| `data/repository/SettingsRepositoryImpl.kt` | + Recording mode implementation |
+| `domain/usecase/UpdateSettingsUseCase.kt` | + Recording mode update methods |
+| `presentation/screens/settings/SettingsViewModel.kt` | + RecordingMode, loopRecordingMinFreeGB |
+| `presentation/screens/settings/SettingsScreen.kt` | + Recording Mode section, Video Encryption toggle, USB camera selector |
+| `data/service/VideoRecordingService.kt` | + USB camera binding, storage monitoring, encryption |
+
+#### VideoEncryptionUtil Features
+```kotlin
+object VideoEncryptionUtil {
+    // AES-256-GCM encryption
+    fun encryptFile(inputFile: File, outputFile: File, pin: String): Boolean
+    fun decryptFile(encryptedFile: File, outputFile: File, pin: String): Boolean
+    fun encryptToMediaStore(contentResolver, sourceFile, pin, displayName): Uri?
+    fun decryptToTemp(encryptedFile: File, pin: String, cacheDir: File): File?
+    fun verifyPin(encryptedFile: File, pin: String): Boolean
+    fun isEncrypted(file: File): Boolean
+}
+```
+
+#### StorageUtil Features
+```kotlin
+object StorageUtil {
+    fun getAvailableStorageGB(): Double
+    fun isStorageLow(minFreeGB: Int): Boolean
+    fun hasEnoughStorageForRecording(requiredMB: Long): Boolean
+    fun getHiddenCamRecordings(contentResolver): List<VideoFileInfo>
+    fun deleteOldestRecording(contentResolver): Long
+    fun freeUpStorage(contentResolver, minFreeGB): Long
+    fun estimateRecordingTimeSeconds(bitrateKbps: Int): Long
+}
+```
+
+#### VideoRecordingService Updates
+- **USB Camera Detection** - Uses Camera2CameraInfo to find LENS_FACING_EXTERNAL cameras
+- **Storage Monitoring** - Background job checks storage every 30 seconds
+- **Encryption Pipeline** - Encrypts video after recording when enabled
+- **Loop Recording Logic** - Deletes oldest files when storage threshold reached
+
+### Settings UI Changes
+
+#### Security Section (when App Lock enabled)
+- App Lock toggle
+- Change PIN
+- Biometric Unlock toggle  
+- Lock Timeout dropdown
+- **Video Encryption toggle** (NEW)
+
+#### Recording Mode Section (NEW)
+- Recording Mode dropdown (Manual/Until Full/Loop)
+- Minimum Free Storage dropdown (only shown for Loop mode)
+- Mode description text
+
+#### Camera Selection (UPDATED)
+- Front / Back / USB selector buttons
+- USB icon for external cameras
+
+#### Audio Settings (UPDATED)
+- Audio Source dropdown now includes:
+  - No Audio
+  - Phone Microphone
+  - Camcorder (optimized)
+  - Bluetooth Headset (NEW)
+  - Phone + Bluetooth Mixed (NEW)
+
+### Permissions (No changes needed)
+- USB cameras use existing CAMERA permission
+- Bluetooth audio uses existing RECORD_AUDIO permission
+
+### Version
+- **versionCode:** 3
+- **versionName:** 1.2
+
+---

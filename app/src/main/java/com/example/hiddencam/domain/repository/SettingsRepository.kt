@@ -6,6 +6,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
@@ -64,6 +65,11 @@ interface SettingsRepository {
     suspend fun setPowerButtonEnabled(enabled: Boolean)
     
     /**
+     * Enable/disable vibration feedback for quick controls
+     */
+    suspend fun setVibrationFeedbackEnabled(enabled: Boolean)
+    
+    /**
      * Update video orientation (portrait/landscape)
      */
     suspend fun setOrientation(orientation: VideoOrientation)
@@ -109,4 +115,14 @@ interface SettingsRepository {
      * Update focus mode
      */
     suspend fun setFocusMode(focusMode: FocusMode)
+
+    /**
+     * Update recording mode (Manual, Until Full, Loop)
+     */
+    suspend fun setRecordingMode(recordingMode: RecordingMode)
+
+    /**
+     * Update minimum free GB for loop recording
+     */
+    suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int)
 }

@@ -7,6 +7,7 @@ import com.example.hiddencam.domain.model.AudioSource
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.FocusMode
 import com.example.hiddencam.domain.model.IsoMode
+import com.example.hiddencam.domain.model.RecordingMode
 import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoBitrate
 import com.example.hiddencam.domain.model.VideoOrientation
@@ -58,6 +59,10 @@ class SettingsRepositoryImpl @Inject constructor(
         settingsDataStore.setPowerButtonEnabled(enabled)
     }
     
+    override suspend fun setVibrationFeedbackEnabled(enabled: Boolean) {
+        settingsDataStore.setVibrationFeedbackEnabled(enabled)
+    }
+    
     override suspend fun setOrientation(orientation: VideoOrientation) {
         settingsDataStore.setOrientation(orientation)
     }
@@ -94,5 +99,13 @@ class SettingsRepositoryImpl @Inject constructor(
     
     override suspend fun setFocusMode(focusMode: FocusMode) {
         settingsDataStore.setFocusMode(focusMode)
+    }
+
+    override suspend fun setRecordingMode(recordingMode: RecordingMode) {
+        settingsDataStore.setRecordingMode(recordingMode)
+    }
+
+    override suspend fun setLoopRecordingMinFreeGB(minFreeGB: Int) {
+        settingsDataStore.setLoopRecordingMinFreeGB(minFreeGB)
     }
 }

@@ -11,6 +11,7 @@ data class VideoSettings(
     val audioSource: AudioSource = AudioSource.MICROPHONE,
     val volumeButtonEnabled: Boolean = true,
     val powerButtonEnabled: Boolean = true,
+    val vibrationFeedbackEnabled: Boolean = true, // Vibrate when recording starts/stops
     val orientation: VideoOrientation = VideoOrientation.PORTRAIT,
     val flashEnabled: Boolean = false,
     val appIcon: AppIcon = AppIcon.DEFAULT,
@@ -20,12 +21,17 @@ data class VideoSettings(
     val exposureCompensation: Int = 0, // EV value from -4 to +4 (in steps)
     val shutterSpeedMode: ShutterSpeedMode = ShutterSpeedMode.AUTO,
     val customShutterSpeed: Long = 0L, // in nanoseconds, 0 means auto
-    val focusMode: FocusMode = FocusMode.CONTINUOUS_VIDEO
+    val focusMode: FocusMode = FocusMode.CONTINUOUS_VIDEO,
+    // New features
+    val encryptVideo: Boolean = false, // Encrypt video with app lock PIN
+    val recordingMode: RecordingMode = RecordingMode.MANUAL, // Recording mode
+    val loopRecordingMinFreeGB: Int = 2 // Min free storage before deleting old videos (GB)
 )
 
-enum class CameraFacing {
-    FRONT,
-    BACK
+enum class CameraFacing(val displayName: String) {
+    FRONT("Front Camera"),
+    BACK("Back Camera"),
+    USB("USB Camera (OTG)")
 }
 
 enum class VideoResolution(val width: Int, val height: Int, val displayName: String) {
@@ -44,8 +50,19 @@ enum class VideoBitrate(val bitsPerSecond: Int, val displayName: String) {
 
 enum class AudioSource(val displayName: String) {
     NONE("No Audio"),
-    MICROPHONE("Microphone"),
-    CAMCORDER("Camcorder (optimized)")
+    MICROPHONE("Phone Microphone"),
+    CAMCORDER("Camcorder (optimized)"),
+    BLUETOOTH("Bluetooth Headset"),
+    MIXED("Phone + Bluetooth Mixed")
+}
+
+/**
+ * Recording mode
+ */
+enum class RecordingMode(val displayName: String) {
+    MANUAL("Manual (Stop manually)"),
+    UNTIL_FULL("Until Storage Full"),
+    LOOP("Loop Recording (Auto-delete old)")
 }
 
 enum class VideoOrientation(val displayName: String) {

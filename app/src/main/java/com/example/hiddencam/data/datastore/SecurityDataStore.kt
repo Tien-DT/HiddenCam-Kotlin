@@ -25,9 +25,11 @@ class SecurityDataStore @Inject constructor(
     private object PreferencesKeys {
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
+        val APP_LOCK_PIN = stringPreferencesKey("app_lock_pin") // Plain PIN for encryption key
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val LOCK_TIMEOUT = intPreferencesKey("lock_timeout") // 0 = immediate, minutes otherwise
         val LAST_BACKGROUND_TIME = longPreferencesKey("last_background_time")
+        val ENCRYPT_VIDEO = booleanPreferencesKey("encrypt_video")
         val BLUETOOTH_REMOTE_ENABLED = booleanPreferencesKey("bluetooth_remote_enabled")
         val PAIRED_DEVICE_NAME = stringPreferencesKey("paired_device_name")
         val PAIRED_DEVICE_ADDRESS = stringPreferencesKey("paired_device_address")
@@ -53,6 +55,7 @@ class SecurityDataStore @Inject constructor(
         val hash = hashPin(pin)
         context.securityDataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_LOCK_PIN_HASH] = hash
+            preferences[PreferencesKeys.APP_LOCK_PIN] = pin // Store plain PIN for encryption
             preferences[PreferencesKeys.APP_LOCK_ENABLED] = true
         }
     }
@@ -63,6 +66,13 @@ class SecurityDataStore @Inject constructor(
             preferences[PreferencesKeys.APP_LOCK_PIN_HASH]
         }.first()
         return hash == storedHash
+    }
+    
+    // Get PIN for encryption (only when app is unlocked)
+    suspend fun getEncryptionPin(): String? {
+        return context.securityDataStore.data.map { preferences ->
+            preferences[PreferencesKeys.APP_LOCK_PIN]
+        }.first()
     }
 
     private fun hashPin(pin: String): String {
@@ -113,6 +123,17 @@ class SecurityDataStore @Inject constructor(
         
         val elapsedMinutes = (System.currentTimeMillis() - lastTime) / 60000
         return elapsedMinutes >= timeout
+    }
+
+    // Video Encryption
+    val encryptVideo: Flow<Boolean> = context.securityDataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ENCRYPT_VIDEO] ?: false
+    }
+
+    suspend fun setEncryptVideo(enabled: Boolean) {
+        context.securityDataStore.edit { preferences ->
+            preferences[PreferencesKeys.ENCRYPT_VIDEO] = enabled
+        }
     }
 
     // Bluetooth Remote Enabled

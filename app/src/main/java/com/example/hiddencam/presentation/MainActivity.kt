@@ -169,7 +169,7 @@ class MainActivity : FragmentActivity() {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     if (settings.volumeButtonEnabled) {
-                        handleVolumeDownPress()
+                        handleVolumeDownPress(settings)
                         return@launch
                     }
                 }
@@ -178,26 +178,39 @@ class MainActivity : FragmentActivity() {
         return super.onKeyDown(keyCode, event)
     }
     
-    private fun handleVolumeDownPress() {
+    private fun handleVolumeDownPress(settings: VideoSettings) {
         val currentTime = System.currentTimeMillis()
         
-        // Long press detection (hold for 1.5 seconds)
-        if (currentTime - volumeKeyPressTime < 1500) {
-            return
-        }
-        
-        volumeKeyPressTime = currentTime
-        
-        lifecycleScope.launch {
-            val currentState = videoRecordingRepository.getRecordingStateFlow().first()
-            val settings = settingsRepository.getSettingsFlow().first()
+        // Double press detection (within 500ms)
+        if (currentTime - volumeKeyPressTime < 500) {
+            volumeKeyPressTime = 0L // Reset to prevent triple press
             
-            when (currentState) {
-                is RecordingState.Idle, is RecordingState.Error -> {
-                    startRecordingService(settings)
+            // Double press detected - toggle recording with vibration
+            lifecycleScope.launch {
+                val currentState = videoRecordingRepository.getRecordingStateFlow().first()
+                
+                when (currentState) {
+                    is RecordingState.Idle, is RecordingState.Error -> {
+                        // Start recording
+                        val intent = VideoRecordingService.getIntent(
+                            this@MainActivity, 
+                            VideoRecordingService.ACTION_TOGGLE_RECORDING_WITH_VIBRATION
+                        )
+                        ContextCompat.startForegroundService(this@MainActivity, intent)
+                    }
+                    is RecordingState.Recording, is RecordingState.Paused -> {
+                        // Stop recording
+                        val intent = VideoRecordingService.getIntent(
+                            this@MainActivity, 
+                            VideoRecordingService.ACTION_TOGGLE_RECORDING_WITH_VIBRATION
+                        )
+                        ContextCompat.startForegroundService(this@MainActivity, intent)
+                    }
+                    else -> { }
                 }
-                else -> { }
             }
+        } else {
+            volumeKeyPressTime = currentTime
         }
     }
     
