@@ -11,6 +11,9 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
@@ -29,7 +32,9 @@ import com.example.hiddencam.R
 import com.example.hiddencam.data.local.SettingsDataStore
 import com.example.hiddencam.data.repository.VideoRecordingRepositoryImpl
 import com.example.hiddencam.domain.model.CameraFacing
+import com.example.hiddencam.domain.model.IsoMode
 import com.example.hiddencam.domain.model.RecordingState
+import com.example.hiddencam.domain.model.ShutterSpeedMode
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.presentation.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -68,6 +73,11 @@ class WebServerService : LifecycleService() {
         const val ACTION_STOP_SERVER = "action_stop_server"
         const val EXTRA_PORT = "extra_port"
         
+        // Audio streaming constants
+        const val SAMPLE_RATE = 16000
+        val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        
         fun getIntent(context: Context, action: String, port: Int = DEFAULT_PORT): Intent {
             return Intent(context, WebServerService::class.java).apply {
                 this.action = action
@@ -93,10 +103,17 @@ class WebServerService : LifecycleService() {
     private var webServer: CameraWebServer? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalysis: ImageAnalysis? = null
+    private var camera: androidx.camera.core.Camera? = null
     
     // Current frame for MJPEG streaming
     private val currentFrame = AtomicReference<ByteArray?>(null)
     private val isStreaming = AtomicBoolean(false)
+    
+    // Audio streaming
+    private var audioRecord: AudioRecord? = null
+    private val currentAudioBuffer = AtomicReference<ByteArray?>(null)
+    private val isAudioStreaming = AtomicBoolean(false)
+    private var audioThread: Thread? = null
     
     private val binder = LocalBinder()
     
@@ -254,12 +271,17 @@ class WebServerService : LifecycleService() {
             
             try {
                 cameraProvider?.unbindAll()
-                cameraProvider?.bindToLifecycle(
+                camera = cameraProvider?.bindToLifecycle(
                     this@WebServerService,
                     cameraSelector,
                     imageAnalysis
                 )
                 isStreaming.set(true)
+                
+                // Apply flash setting if enabled
+                val flashEnabled = settings.flashEnabled
+                camera?.cameraControl?.enableTorch(flashEnabled)
+                
                 Log.d(TAG, "Camera bound for streaming")
             } catch (e: Exception) {
                 Log.e(TAG, "Error binding camera", e)
@@ -316,6 +338,71 @@ class WebServerService : LifecycleService() {
         cameraProvider?.unbindAll()
         cameraProvider = null
         imageAnalysis = null
+        camera = null
+        stopAudioStreaming()
+    }
+    
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun startAudioStreaming() {
+        if (isAudioStreaming.get()) return
+        
+        try {
+            val bufferSize = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT
+            )
+            
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                bufferSize * 2
+            )
+            
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord failed to initialize")
+                return
+            }
+            
+            audioRecord?.startRecording()
+            isAudioStreaming.set(true)
+            
+            audioThread = Thread {
+                val buffer = ByteArray(bufferSize)
+                while (isAudioStreaming.get()) {
+                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+                    if (read > 0) {
+                        val audioData = buffer.copyOf(read)
+                        currentAudioBuffer.set(audioData)
+                    }
+                }
+            }.apply { 
+                name = "AudioStreamThread"
+                start() 
+            }
+            
+            Log.d(TAG, "Audio streaming started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting audio streaming", e)
+        }
+    }
+    
+    private fun stopAudioStreaming() {
+        isAudioStreaming.set(false)
+        audioThread?.interrupt()
+        audioThread = null
+        
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio record", e)
+        }
+        audioRecord = null
+        currentAudioBuffer.set(null)
+        Log.d(TAG, "Audio streaming stopped")
     }
     
     private fun getLocalIpAddress(): String {
@@ -351,6 +438,7 @@ class WebServerService : LifecycleService() {
             return when {
                 uri == "/" || uri == "/index.html" -> serveHtml()
                 uri == "/stream.mjpg" -> serveMjpegStream()
+                uri == "/audio.wav" -> serveAudioStream()
                 uri == "/snapshot.jpg" -> serveSnapshot()
                 uri.startsWith("/api/") -> handleApiRequest(session)
                 uri == "/style.css" -> serveCss()
@@ -375,7 +463,12 @@ class WebServerService : LifecycleService() {
         }
         
         private fun serveSnapshot(): Response {
-            val frame = currentFrame.get()
+            // Use FrameProvider if recording service is active, otherwise use local frame
+            val frame = if (FrameProvider.isRecordingActive()) {
+                FrameProvider.getLatestFrame()
+            } else {
+                currentFrame.get()
+            }
             return if (frame != null) {
                 newFixedLengthResponse(
                     Response.Status.OK,
@@ -395,6 +488,19 @@ class WebServerService : LifecycleService() {
                 Response.Status.OK,
                 "multipart/x-mixed-replace; boundary=$boundary",
                 MjpegInputStream(boundary)
+            )
+        }
+        
+        private fun serveAudioStream(): Response {
+            // Start audio streaming if not already started
+            if (!isAudioStreaming.get()) {
+                startAudioStreaming()
+            }
+            
+            return newChunkedResponse(
+                Response.Status.OK,
+                "audio/wav",
+                AudioInputStream()
             )
         }
         
@@ -442,6 +548,22 @@ class WebServerService : LifecycleService() {
                     put("bitrate", s.bitrate.name)
                     put("flashEnabled", s.flashEnabled)
                     put("audioSource", s.audioSource.name)
+                    put("isoMode", s.isoMode.name.removePrefix("ISO_").let { 
+                        if (it == "AUTO") "AUTO" else it 
+                    })
+                    put("shutterSpeed", if (s.shutterSpeedMode == ShutterSpeedMode.AUTO) {
+                        "AUTO"
+                    } else {
+                        when (s.customShutterSpeed) {
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_30 -> "1/30"
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_60 -> "1/60"
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_125 -> "1/125"
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_250 -> "1/250"
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_500 -> "1/500"
+                            com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_1000 -> "1/1000"
+                            else -> "AUTO"
+                        }
+                    })
                 }
             }
             return jsonResponse(json)
@@ -467,6 +589,38 @@ class WebServerService : LifecycleService() {
                     if (json.has("flashEnabled")) {
                         settingsDataStore.setFlashEnabled(json.getBoolean("flashEnabled"))
                     }
+                    if (json.has("isoMode")) {
+                        val isoStr = json.getString("isoMode")
+                        val isoMode = when (isoStr) {
+                            "AUTO" -> IsoMode.AUTO
+                            "100" -> IsoMode.ISO_100
+                            "200" -> IsoMode.ISO_200
+                            "400" -> IsoMode.ISO_400
+                            "800" -> IsoMode.ISO_800
+                            "1600" -> IsoMode.ISO_1600
+                            "3200" -> IsoMode.ISO_3200
+                            else -> IsoMode.AUTO
+                        }
+                        settingsDataStore.setIsoMode(isoMode)
+                    }
+                    if (json.has("shutterSpeed")) {
+                        val shutterStr = json.getString("shutterSpeed")
+                        if (shutterStr == "AUTO") {
+                            settingsDataStore.setShutterSpeedMode(ShutterSpeedMode.AUTO)
+                        } else {
+                            settingsDataStore.setShutterSpeedMode(ShutterSpeedMode.CUSTOM)
+                            val shutterNanos = when (shutterStr) {
+                                "1/30" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_30
+                                "1/60" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_60
+                                "1/125" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_125
+                                "1/250" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_250
+                                "1/500" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_500
+                                "1/1000" -> com.example.hiddencam.domain.model.ShutterSpeedValues.SPEED_1_1000
+                                else -> 0L
+                            }
+                            settingsDataStore.setCustomShutterSpeed(shutterNanos)
+                        }
+                    }
                 }
                 
                 return jsonResponse(JSONObject().put("success", true))
@@ -477,6 +631,14 @@ class WebServerService : LifecycleService() {
         }
         
         private fun handleStartRecording(): Response {
+            // Unbind web server's camera before starting recording service on main thread
+            // Recording service will take over camera and provide frames via FrameProvider
+            lifecycleScope.launch(Dispatchers.Main) {
+                cameraProvider?.unbindAll()
+                camera = null
+                isStreaming.set(false)
+            }
+            
             val intent = VideoRecordingService.getIntent(
                 this@WebServerService,
                 VideoRecordingService.ACTION_START_RECORDING
@@ -491,6 +653,14 @@ class WebServerService : LifecycleService() {
                 VideoRecordingService.ACTION_STOP_RECORDING
             )
             startService(intent)
+            
+            // Re-bind camera for web streaming after a short delay to let recording service clean up
+            lifecycleScope.launch {
+                kotlinx.coroutines.delay(500)
+                withContext(Dispatchers.Main) {
+                    bindCameraForStreaming()
+                }
+            }
             return jsonResponse(JSONObject().put("success", true).put("action", "stop"))
         }
         
@@ -532,7 +702,22 @@ class WebServerService : LifecycleService() {
         private fun handleToggleFlash(): Response {
             lifecycleScope.launch {
                 val settings = settingsDataStore.getSettings()
-                settingsDataStore.setFlashEnabled(!settings.flashEnabled)
+                val newFlashState = !settings.flashEnabled
+                settingsDataStore.setFlashEnabled(newFlashState)
+                
+                // If recording service is active, send flash toggle command to it
+                if (FrameProvider.isRecordingActive()) {
+                    val intent = VideoRecordingService.getIntent(
+                        this@WebServerService,
+                        VideoRecordingService.ACTION_TOGGLE_FLASH
+                    )
+                    startService(intent)
+                } else {
+                    // If not recording, toggle flash on web server's camera
+                    withContext(Dispatchers.Main) {
+                        camera?.cameraControl?.enableTorch(newFlashState)
+                    }
+                }
             }
             return jsonResponse(JSONObject().put("success", true).put("action", "toggle_flash"))
         }
@@ -593,7 +778,12 @@ class WebServerService : LifecycleService() {
                 }
                 lastFrameTime = System.currentTimeMillis()
                 
-                val frame = currentFrame.get() ?: return null
+                // Use FrameProvider if recording service is active, otherwise use local frame
+                val frame = if (FrameProvider.isRecordingActive()) {
+                    FrameProvider.getLatestFrame()
+                } else {
+                    currentFrame.get()
+                } ?: return null
                 
                 val header = "--$boundary\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.size}\r\n\r\n"
                 val footer = "\r\n"
@@ -602,6 +792,119 @@ class WebServerService : LifecycleService() {
                 currentIndex = 0
             }
             return currentData
+        }
+    }
+    
+    /**
+     * Audio stream InputStream for WAV streaming
+     */
+    inner class AudioInputStream : java.io.InputStream() {
+        private var headerSent = false
+        private var headerData: ByteArray? = null
+        private var headerIndex = 0
+        private var lastAudioTime = 0L
+        private val audioInterval = 50L // ~20 audio chunks per second
+        
+        override fun read(): Int {
+            if (!headerSent) {
+                val header = getWavHeader()
+                if (headerIndex < header.size) {
+                    return header[headerIndex++].toInt() and 0xFF
+                }
+                headerSent = true
+            }
+            
+            val audioData = getNextAudioData() ?: return 0
+            return if (audioData.isNotEmpty()) audioData[0].toInt() and 0xFF else 0
+        }
+        
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            // First send WAV header
+            if (!headerSent) {
+                if (headerData == null) {
+                    headerData = getWavHeader()
+                    headerIndex = 0
+                }
+                
+                val header = headerData!!
+                if (headerIndex < header.size) {
+                    val remaining = header.size - headerIndex
+                    val toRead = minOf(len, remaining)
+                    System.arraycopy(header, headerIndex, b, off, toRead)
+                    headerIndex += toRead
+                    if (headerIndex >= header.size) {
+                        headerSent = true
+                    }
+                    return toRead
+                }
+                headerSent = true
+            }
+            
+            // Rate limit audio chunks
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastAudioTime
+            if (elapsed < audioInterval) {
+                Thread.sleep(audioInterval - elapsed)
+            }
+            lastAudioTime = System.currentTimeMillis()
+            
+            val audioData = currentAudioBuffer.get() ?: return 0
+            val toRead = minOf(len, audioData.size)
+            System.arraycopy(audioData, 0, b, off, toRead)
+            return toRead
+        }
+        
+        private fun getNextAudioData(): ByteArray? {
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastAudioTime
+            if (elapsed < audioInterval) {
+                Thread.sleep(audioInterval - elapsed)
+            }
+            lastAudioTime = System.currentTimeMillis()
+            return currentAudioBuffer.get()
+        }
+        
+        /**
+         * Generate WAV header for streaming
+         * Note: We use a very large data size since we're streaming continuously
+         */
+        private fun getWavHeader(): ByteArray {
+            val byteRate = SAMPLE_RATE * 1 * 16 / 8 // sampleRate * numChannels * bitsPerSample / 8
+            val blockAlign = 1 * 16 / 8 // numChannels * bitsPerSample / 8
+            val dataSize = Int.MAX_VALUE // Continuous stream
+            
+            return ByteArrayOutputStream().apply {
+                // RIFF header
+                write("RIFF".toByteArray())
+                writeIntLE(dataSize + 36) // File size - 8
+                write("WAVE".toByteArray())
+                
+                // fmt subchunk
+                write("fmt ".toByteArray())
+                writeIntLE(16) // Subchunk1Size (16 for PCM)
+                writeShortLE(1) // AudioFormat (1 = PCM)
+                writeShortLE(1) // NumChannels (1 = Mono)
+                writeIntLE(SAMPLE_RATE) // SampleRate
+                writeIntLE(byteRate) // ByteRate
+                writeShortLE(blockAlign) // BlockAlign
+                writeShortLE(16) // BitsPerSample
+                
+                // data subchunk
+                write("data".toByteArray())
+                writeIntLE(dataSize) // Subchunk2Size
+            }.toByteArray()
+        }
+        
+        private fun ByteArrayOutputStream.writeIntLE(value: Int) {
+            write(value and 0xFF)
+            write((value shr 8) and 0xFF)
+            write((value shr 16) and 0xFF)
+            write((value shr 24) and 0xFF)
+        }
+        
+        private fun ByteArrayOutputStream.writeShortLE(value: Int) {
+            write(value and 0xFF)
+            write((value shr 8) and 0xFF)
         }
     }
     
@@ -624,6 +927,7 @@ class WebServerService : LifecycleService() {
         
         <div class="preview-container">
             <img id="stream" src="/stream.mjpg" alt="Camera Stream">
+            <audio id="audio-stream" autoplay style="display:none;"></audio>
             <div id="recording-indicator" class="recording-indicator hidden">
                 <span class="dot"></span> REC
             </div>
@@ -651,6 +955,9 @@ class WebServerService : LifecycleService() {
             <button id="btn-flash" class="btn btn-secondary" onclick="toggleFlash()">
                 💡 Flash: OFF
             </button>
+            <button id="btn-audio" class="btn btn-secondary" onclick="toggleAudio()">
+                🔊 Audio: OFF
+            </button>
             <button class="btn btn-secondary" onclick="takeSnapshot()">
                 📷 Snapshot
             </button>
@@ -672,6 +979,30 @@ class WebServerService : LifecycleService() {
                     <option value="HD_720P">720p (HD)</option>
                     <option value="FHD_1080P">1080p (Full HD)</option>
                     <option value="UHD_4K">4K (UHD)</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>ISO</label>
+                <select id="iso-select" onchange="updateIso()">
+                    <option value="AUTO">Auto</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="400">400</option>
+                    <option value="800">800</option>
+                    <option value="1600">1600</option>
+                    <option value="3200">3200</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>Shutter Speed</label>
+                <select id="shutter-select" onchange="updateShutter()">
+                    <option value="AUTO">Auto</option>
+                    <option value="1/30">1/30s</option>
+                    <option value="1/60">1/60s</option>
+                    <option value="1/125">1/125s</option>
+                    <option value="1/250">1/250s</option>
+                    <option value="1/500">1/500s</option>
+                    <option value="1/1000">1/1000s</option>
                 </select>
             </div>
         </div>
@@ -918,6 +1249,7 @@ footer {
 let isRecording = false;
 let isPaused = false;
 let flashEnabled = false;
+let audioEnabled = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
@@ -954,6 +1286,8 @@ async function loadSettings() {
         
         document.getElementById('camera-select').value = data.cameraFacing || 'BACK';
         document.getElementById('resolution-select').value = data.resolution || 'HD_720P';
+        document.getElementById('iso-select').value = data.isoMode || 'AUTO';
+        document.getElementById('shutter-select').value = data.shutterSpeed || 'AUTO';
         flashEnabled = data.flashEnabled || false;
         updateFlashButton();
     } catch (error) {
@@ -1029,6 +1363,32 @@ function updateFlashButton() {
         flashEnabled ? '💡 Flash: ON' : '💡 Flash: OFF';
 }
 
+function toggleAudio() {
+    audioEnabled = !audioEnabled;
+    const audioElement = document.getElementById('audio-stream');
+    const audioButton = document.getElementById('btn-audio');
+    
+    if (audioEnabled) {
+        // Start audio stream
+        audioElement.src = '/audio.wav?' + Date.now();
+        audioElement.play().catch(err => {
+            console.log('Audio autoplay blocked, user interaction needed');
+            audioEnabled = false;
+            updateAudioButton();
+        });
+    } else {
+        // Stop audio stream
+        audioElement.pause();
+        audioElement.src = '';
+    }
+    updateAudioButton();
+}
+
+function updateAudioButton() {
+    document.getElementById('btn-audio').textContent = 
+        audioEnabled ? '🔊 Audio: ON' : '🔇 Audio: OFF';
+}
+
 async function updateCamera() {
     const camera = document.getElementById('camera-select').value;
     await fetch('/api/settings', {
@@ -1047,6 +1407,24 @@ async function updateResolution() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution: resolution })
+    });
+}
+
+async function updateIso() {
+    const iso = document.getElementById('iso-select').value;
+    await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isoMode: iso })
+    });
+}
+
+async function updateShutter() {
+    const shutter = document.getElementById('shutter-select').value;
+    await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shutterSpeed: shutter })
     });
 }
 

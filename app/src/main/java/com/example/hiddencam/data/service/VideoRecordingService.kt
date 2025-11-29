@@ -26,6 +26,7 @@ import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
@@ -87,6 +88,7 @@ class VideoRecordingService : LifecycleService() {
         const val ACTION_STOP_RECORDING = "action_stop_recording"
         const val ACTION_TOGGLE_RECORDING = "action_toggle_recording"
         const val ACTION_TOGGLE_RECORDING_WITH_VIBRATION = "action_toggle_recording_with_vibration"
+        const val ACTION_TOGGLE_FLASH = "action_toggle_flash"
         
         fun getIntent(context: Context, action: String): Intent {
             return Intent(context, VideoRecordingService::class.java).apply {
@@ -102,6 +104,7 @@ class VideoRecordingService : LifecycleService() {
     lateinit var securityDataStore: SecurityDataStore
     
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var activeRecording: Recording? = null
     private var cameraExecutor: ExecutorService? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -156,6 +159,10 @@ class VideoRecordingService : LifecycleService() {
                 lifecycleScope.launch {
                     handleToggleRecording(withVibration = true)
                 }
+            }
+            ACTION_TOGGLE_FLASH -> {
+                // Toggle flash/torch on the camera
+                toggleFlash()
             }
         }
         
@@ -427,10 +434,31 @@ class VideoRecordingService : LifecycleService() {
             }
             videoCapture?.targetRotation = targetRotation
             
+            // Create ImageAnalysis for web streaming
+            imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { analysis ->
+                    analysis.setAnalyzer(cameraExecutor!!) { imageProxy ->
+                        try {
+                            val jpeg = FrameProvider.imageProxyToJpeg(imageProxy)
+                            FrameProvider.updateFrame(jpeg)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error capturing frame for web streaming", e)
+                        } finally {
+                            imageProxy.close()
+                        }
+                    }
+                }
+            
+            // Mark recording as active for web server
+            FrameProvider.setRecordingActive(true)
+            
             camera = cameraProvider?.bindToLifecycle(
                 this,
                 cameraSelector,
-                videoCapture
+                videoCapture,
+                imageAnalysis
             )
             
             // Enable flash/torch if requested and available (back camera only)
@@ -728,7 +756,27 @@ class VideoRecordingService : LifecycleService() {
         camera?.cameraControl?.enableTorch(false)
         activeRecording?.stop()
         activeRecording = null
+        // Clean up FrameProvider when recording stops
+        FrameProvider.setRecordingActive(false)
         RecordingWidgetReceiver.updateWidget(this, false)
+    }
+    
+    /**
+     * Toggle flash/torch state for web server control
+     */
+    private fun toggleFlash() {
+        val cameraControl = camera?.cameraControl ?: return
+        val cameraInfo = camera?.cameraInfo ?: return
+        
+        lifecycleScope.launch {
+            try {
+                val currentTorchState = cameraInfo.torchState.value == androidx.camera.core.TorchState.ON
+                cameraControl.enableTorch(!currentTorchState)
+                Log.d(TAG, "Flash toggled to: ${!currentTorchState}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error toggling flash", e)
+            }
+        }
     }
     
     private fun createOutputFile(): File {
