@@ -113,6 +113,7 @@ class VideoRecordingService : LifecycleService() {
     private var camera: Camera? = null
     private var currentOutputFile: File? = null
     private var storageCheckJob: kotlinx.coroutines.Job? = null
+    private var activeRecordingSessionId: Long = 0L
     
     private val binder = LocalBinder()
     
@@ -123,7 +124,6 @@ class VideoRecordingService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         cameraExecutor = Executors.newSingleThreadExecutor()
-        setupRepositoryCallbacks()
         acquireWakeLock()
     }
     
@@ -207,26 +207,6 @@ class VideoRecordingService : LifecycleService() {
                 }
             }
             else -> { /* Do nothing */ }
-        }
-    }
-    
-    private fun setupRepositoryCallbacks() {
-        videoRecordingRepository.onStartRecording = { settings ->
-            currentSettings = settings
-            startForegroundService()
-            startRecording(settings)
-        }
-        
-        videoRecordingRepository.onPauseRecording = {
-            pauseRecording()
-        }
-        
-        videoRecordingRepository.onResumeRecording = {
-            resumeRecording()
-        }
-        
-        videoRecordingRepository.onStopRecording = {
-            stopRecording()
         }
     }
     
@@ -645,11 +625,14 @@ class VideoRecordingService : LifecycleService() {
                 pendingRecording.withAudioEnabled()
             }
         }
+
+        val sessionId = activeRecordingSessionId + 1
+        activeRecordingSessionId = sessionId
         
         activeRecording = pendingRecording.start(
             ContextCompat.getMainExecutor(this)
         ) { recordEvent ->
-            handleRecordEvent(recordEvent)
+            handleRecordEvent(sessionId, recordEvent)
         }
         
         // Start storage monitoring for loop/until_full modes
@@ -692,7 +675,12 @@ class VideoRecordingService : LifecycleService() {
         }
     }
     
-    private fun handleRecordEvent(event: VideoRecordEvent) {
+    private fun handleRecordEvent(sessionId: Long, event: VideoRecordEvent) {
+        if (sessionId != activeRecordingSessionId) {
+            Log.d(TAG, "Ignoring stale recording event for session $sessionId")
+            return
+        }
+
         when (event) {
             is VideoRecordEvent.Start -> {
                 Log.d(TAG, "Recording started")
@@ -718,6 +706,7 @@ class VideoRecordingService : LifecycleService() {
             is VideoRecordEvent.Finalize -> {
                 // Stop storage monitoring
                 storageCheckJob?.cancel()
+                activeRecording = null
                 
                 // Turn off flash
                 camera?.cameraControl?.enableTorch(false)

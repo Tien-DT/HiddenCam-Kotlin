@@ -31,3 +31,4 @@ replay_pid*
 # === Misc ===
 .DS_Store
 /.gradle
+*.jks

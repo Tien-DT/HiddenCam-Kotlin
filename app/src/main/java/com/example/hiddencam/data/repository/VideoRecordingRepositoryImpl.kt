@@ -1,9 +1,13 @@
 package com.example.hiddencam.data.repository
 
+import android.content.Context
+import androidx.core.content.ContextCompat
 import com.example.hiddencam.data.local.SettingsDataStore
+import com.example.hiddencam.data.service.VideoRecordingService
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
 import com.example.hiddencam.domain.repository.VideoRecordingRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,16 +20,11 @@ import javax.inject.Singleton
  */
 @Singleton
 class VideoRecordingRepositoryImpl @Inject constructor(
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    @ApplicationContext private val appContext: Context
 ) : VideoRecordingRepository {
     
     private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
-    
-    // Callbacks to communicate with the service
-    var onStartRecording: ((VideoSettings) -> Unit)? = null
-    var onPauseRecording: (() -> Unit)? = null
-    var onResumeRecording: (() -> Unit)? = null
-    var onStopRecording: (() -> Unit)? = null
     
     override fun getRecordingStateFlow(): Flow<RecordingState> {
         return _recordingState.asStateFlow()
@@ -37,20 +36,36 @@ class VideoRecordingRepositoryImpl @Inject constructor(
     
     override suspend fun startRecording(settings: VideoSettings) {
         _recordingState.value = RecordingState.Starting
-        onStartRecording?.invoke(settings)
+        val intent = VideoRecordingService.getIntent(
+            appContext,
+            VideoRecordingService.ACTION_START_RECORDING
+        )
+        ContextCompat.startForegroundService(appContext, intent)
     }
     
     override suspend fun pauseRecording() {
-        onPauseRecording?.invoke()
+        val intent = VideoRecordingService.getIntent(
+            appContext,
+            VideoRecordingService.ACTION_PAUSE_RECORDING
+        )
+        appContext.startService(intent)
     }
     
     override suspend fun resumeRecording() {
-        onResumeRecording?.invoke()
+        val intent = VideoRecordingService.getIntent(
+            appContext,
+            VideoRecordingService.ACTION_RESUME_RECORDING
+        )
+        appContext.startService(intent)
     }
     
     override suspend fun stopRecording() {
         _recordingState.value = RecordingState.Stopping
-        onStopRecording?.invoke()
+        val intent = VideoRecordingService.getIntent(
+            appContext,
+            VideoRecordingService.ACTION_STOP_RECORDING
+        )
+        appContext.startService(intent)
     }
     
     override fun isRecording(): Boolean {

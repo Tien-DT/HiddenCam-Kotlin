@@ -1,7 +1,5 @@
 package com.example.hiddencam.presentation.screens.home
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -58,9 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.hiddencam.data.service.VideoRecordingService
 import com.example.hiddencam.domain.model.CameraFacing
 import com.example.hiddencam.domain.model.RecordingState
 import com.example.hiddencam.domain.model.VideoSettings
@@ -156,10 +152,7 @@ fun HomeScreen(
             } else {
                 RecordingControls(
                     recordingState = recordingState,
-                    onStartRecording = { 
-                        startRecordingService(context, settings)
-                        viewModel.startRecording()
-                    },
+                    onStartRecording = { viewModel.startRecording() },
                     onStopRecording = { viewModel.stopRecording() },
                     onPauseRecording = { viewModel.pauseRecording() },
                     onResumeRecording = { viewModel.resumeRecording() }
@@ -507,7 +500,3 @@ private fun formatDuration(durationMs: Long): String {
     }
 }
 
-private fun startRecordingService(context: Context, settings: VideoSettings) {
-    val intent = VideoRecordingService.getIntent(context, VideoRecordingService.ACTION_START_RECORDING)
-    ContextCompat.startForegroundService(context, intent)
-}

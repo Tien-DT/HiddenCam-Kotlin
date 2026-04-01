@@ -1,14 +1,9 @@
 package com.example.hiddencam.presentation
 
 import android.Manifest
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
 import android.view.KeyEvent
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -49,9 +44,6 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var securityDataStore: SecurityDataStore
     
-    private var videoRecordingService: VideoRecordingService? = null
-    private var isBound = false
-    
     private var volumeKeyPressTime = 0L
     private var powerButtonPressCount = 0
     private var lastPowerButtonPressTime = 0L
@@ -75,19 +67,6 @@ class MainActivity : FragmentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         allPermissionsGranted = permissions.all { it.value }
-    }
-    
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as? VideoRecordingService.LocalBinder
-            videoRecordingService = binder?.getService()
-            isBound = true
-        }
-        
-        override fun onServiceDisconnected(name: ComponentName?) {
-            videoRecordingService = null
-            isBound = false
-        }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -123,12 +102,7 @@ class MainActivity : FragmentActivity() {
     
     override fun onStart() {
         super.onStart()
-        bindService(
-            Intent(this, VideoRecordingService::class.java),
-            serviceConnection,
-            Context.BIND_AUTO_CREATE
-        )
-        
+
         // Check if app should be locked based on timeout
         lifecycleScope.launch {
             if (securityDataStore.shouldLockApp()) {
@@ -139,11 +113,7 @@ class MainActivity : FragmentActivity() {
     
     override fun onStop() {
         super.onStop()
-        if (isBound) {
-            unbindService(serviceConnection)
-            isBound = false
-        }
-        
+
         // Save the time when app goes to background
         lifecycleScope.launch {
             securityDataStore.setLastBackgroundTime(System.currentTimeMillis())
@@ -214,8 +184,4 @@ class MainActivity : FragmentActivity() {
         }
     }
     
-    private fun startRecordingService(settings: VideoSettings) {
-        val intent = VideoRecordingService.getIntent(this, VideoRecordingService.ACTION_START_RECORDING)
-        ContextCompat.startForegroundService(this, intent)
-    }
 }
